@@ -7,15 +7,23 @@ export function calculateDistance(
   const R = 6371;
 
   const dLat =
-    (lat2 - lat1) * Math.PI / 180;
+    (lat2 - lat1) *
+    Math.PI /
+    180;
 
   const dLon =
-    (lon2 - lon1) * Math.PI / 180;
+    (lon2 - lon1) *
+    Math.PI /
+    180;
 
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) *
-    Math.cos(lat2 * Math.PI / 180) *
+    Math.cos(
+      lat1 * Math.PI / 180
+    ) *
+    Math.cos(
+      lat2 * Math.PI / 180
+    ) *
     Math.sin(dLon / 2) ** 2;
 
   return (
@@ -28,7 +36,9 @@ export function calculateDistance(
   );
 }
 
-export function isWalkingSpeed(speedKmh) {
+export function isWalkingSpeed(
+  speedKmh
+) {
   if (
     speedKmh === null ||
     speedKmh === undefined
@@ -37,7 +47,7 @@ export function isWalkingSpeed(speedKmh) {
   }
 
   return (
-    speedKmh >= 0.5 &&
+    speedKmh >= 0 &&
     speedKmh <= 12
   );
 }
@@ -47,13 +57,18 @@ export function calculatePoints(
   newDistance
 ) {
   const oldMilestones =
-    Math.floor(oldDistance / 5);
+    Math.floor(
+      Number(oldDistance) / 5
+    );
 
   const newMilestones =
-    Math.floor(newDistance / 5);
+    Math.floor(
+      Number(newDistance) / 5
+    );
 
   return Math.max(
     0,
-    newMilestones - oldMilestones
+    newMilestones -
+      oldMilestones
   );
 }
