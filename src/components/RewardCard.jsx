@@ -1,10 +1,12 @@
 export default function RewardCard({
   reward,
   onSelect,
-  availablePoints
+  availablePoints,
+  loading
 }) {
   const canUse =
-    availablePoints >= reward.cost;
+    Number(availablePoints || 0) >=
+    Number(reward.cost);
 
   return (
     <section className="card reward-card">
@@ -13,7 +15,9 @@ export default function RewardCard({
           SPONSORED REWARD
         </p>
 
-        <h2>{reward.title}</h2>
+        <h2>
+          {reward.title}
+        </h2>
 
         <p className="muted">
           {reward.description}
@@ -31,11 +35,17 @@ export default function RewardCard({
               ? "primary-button"
               : "disabled-button"
           }
-          disabled={!canUse}
-          onClick={() => onSelect(reward)}
+          disabled={
+            !canUse || loading
+          }
+          onClick={() =>
+            onSelect(reward)
+          }
         >
-          {canUse
-            ? "Use Points"
+          {loading
+            ? "Processing..."
+            : canUse
+            ? "Enter"
             : "Not Enough"}
         </button>
       </div>
