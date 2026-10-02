@@ -6,19 +6,44 @@ import Account from "./components/Account";
 import { getAccount } from "./utils/storage";
 
 export default function App() {
-  const [page, setPage] = useState("home");
+  const [page, setPage] = useState("account");
   const [account, setAccount] = useState(null);
 
   useEffect(() => {
     const saved = getAccount();
 
-    if (saved) {
+    if (saved && saved.walkingId) {
       setAccount(saved);
+      setPage("home");
+    } else {
+      setAccount(null);
+      setPage("account");
     }
   }, []);
 
   function updateAccount(newAccount) {
     setAccount(newAccount);
+
+    if (newAccount && newAccount.walkingId) {
+      setPage("home");
+    } else {
+      setPage("account");
+    }
+  }
+
+  // No account yet
+  if (!account) {
+    return (
+      <div className="app">
+        <main className="main-content">
+          <Account
+            account={null}
+            updateAccount={updateAccount}
+            firstSetup={true}
+          />
+        </main>
+      </div>
+    );
   }
 
   return (
