@@ -1,73 +1,37 @@
-export default function Dashboard({ account, setPage }) {
-  const points = account?.points || 0;
-  const totalDistance = Number(account?.totalDistance || 0);
-  const completedWalks = account?.completedWalks || 0;
+const ACCOUNT_KEY = "walking_rewards_account";
 
-  const progress = totalDistance % 5;
-  const progressPercent = (progress / 5) * 100;
+export function getAccount() {
+  try {
+    const saved = localStorage.getItem(ACCOUNT_KEY);
 
-  return (
-    <div className="dashboard">
-      <section className="card">
-        <h2>Welcome to Walking Rewards</h2>
+    if (!saved) {
+      return null;
+    }
 
-        <p>
-          Walk verified kilometres, earn points, and use your
-          points for available rewards.
-        </p>
-      </section>
+    const account = JSON.parse(saved);
 
-      <section className="stats-grid">
-        <div className="card">
-          <span>Points</span>
-          <strong>{points}</strong>
-        </div>
+    if (!account || !account.walkingId) {
+      return null;
+    }
 
-        <div className="card">
-          <span>Total Distance</span>
-          <strong>{totalDistance.toFixed(2)} km</strong>
-        </div>
+    return account;
+  } catch (error) {
+    console.error("Failed to load local account:", error);
+    return null;
+  }
+}
 
-        <div className="card">
-          <span>Completed Walks</span>
-          <strong>{completedWalks}</strong>
-        </div>
-      </section>
+export function saveAccount(account) {
+  if (!account || !account.walkingId) {
+    throw new Error("Cannot save an invalid account.");
+  }
 
-      <section className="card">
-        <h3>Next Point</h3>
-
-        <p>
-          {progress.toFixed(2)} km of 5 km completed
-        </p>
-
-        <div className="progress-container">
-          <div
-            className="progress-bar"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
-
-        <p>
-          {(5 - progress).toFixed(2)} km remaining
-        </p>
-      </section>
-
-      <section className="dashboard-actions">
-        <button
-          className="primary-button"
-          onClick={() => setPage("walk")}
-        >
-          Start Walking
-        </button>
-
-        <button
-          className="secondary-button"
-          onClick={() => setPage("rewards")}
-        >
-          View Rewards
-        </button>
-      </section>
-    </div>
+  localStorage.setItem(
+    ACCOUNT_KEY,
+    JSON.stringify(account)
   );
+}
+
+export function clearAccount() {
+  localStorage.removeItem(ACCOUNT_KEY);
 }
