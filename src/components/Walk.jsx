@@ -1,33 +1,50 @@
 import { useEffect, useRef, useState } from "react";
-import { startGPS, stopGPS } from "../utils/gps";
-import { startMotionTracking, stopMotionTracking } from "../utils/motion";
-import { getAccount, saveAccount } from "../utils/storage";
-import { addDistance } from "../utils/api";
+import {
+  startGPS
+} from "../utils/gps";
 
-export default function Walk({ account, updateAccount }) {
+import {
+  startMotionTracking
+} from "../utils/motion";
+
+import {
+  getAccount,
+  saveAccount
+} from "../utils/storage";
+
+import {
+  startWalkSession,
+  sendWalkPosition,
+  finishWalkSession
+} from "../utils/api";
+
+export default function Walk({
+  account,
+  updateAccount
+}) {
   const [running, setRunning] = useState(false);
   const [distance, setDistance] = useState(0);
   const [speed, setSpeed] = useState(0);
   const [steps, setSteps] = useState(0);
+  const [gpsAccuracy, setGpsAccuracy] = useState(null);
   const [status, setStatus] = useState(
     "Ready to start"
   );
-  const [gpsAccuracy, setGpsAccuracy] = useState(null);
 
   const gpsCleanup = useRef(null);
   const motionCleanup = useRef(null);
-  const startTime = useRef(null);
+
+  const sessionId = useRef(null);
   const lastPosition = useRef(null);
-  const verifiedDistance = useRef(0);
-  const lastStepCount = useRef(0);
+  const lastPositionTime = useRef(null);
 
   useEffect(() => {
     return () => {
-      stopEverything();
+      stopTracking();
     };
   }, []);
 
-  function stopEverything() {
+  function stopTracking() {
     if (gpsCleanup.current) {
       gpsCleanup.current();
       gpsCleanup.current = null;
@@ -39,211 +56,256 @@ export default function Walk({ account, updateAccount }) {
     }
   }
 
-  function calculateDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371;
-
-    const dLat =
-      (lat2 - lat1) * Math.PI / 180;
-
-    const dLon =
-      (lon2 - lon1) * Math.PI / 180;
-
-    const a =
-      Math.sin(dLat / 2) ** 2 +
-      Math.cos(lat1 * Math.PI / 180) *
-      Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLon / 2) ** 2;
-
-    return (
-      R *
-      2 *
-      Math.atan2(
-        Math.sqrt(a),
-        Math.sqrt(1 - a)
-      )
-    );
-  }
-
-  function beginWalk() {
+  async function beginWalk() {
     if (!navigator.geolocation) {
-      setStatus("GPS is not supported on this device.");
+      setStatus(
+        "GPS is not supported on this device."
+      );
       return;
     }
 
-    setRunning(true);
-    setDistance(0);
-    setSteps(0);
-    setSpeed(0);
-    setStatus("Getting GPS location...");
+    if (!account?.walkingId) {
+      setStatus(
+        "Your Walking Account has not been created yet."
+      );
+      return;
+    }
 
-    startTime.current = Date.now();
-    lastPosition.current = null;
-    verifiedDistance.current = 0;
+    try {
+      setStatus("Starting verified walk...");
 
-    gpsCleanup.current = startGPS(
-      (position) => {
-        const {
-          latitude,
-          longitude,
-          accuracy,
-          speed: gpsSpeed
-        } = position.coords;
+      const result =
+        await startWalkSession(
+          account.walkingId
+        );
 
-        setGpsAccuracy(accuracy);
+      sessionId.current =
+        result.sessionId;
 
-        if (accuracy > 50) {
-          setStatus(
-            "GPS accuracy is weak. Move somewhere with a clearer signal."
-          );
-          return;
-        }
+      lastPosition.current = null;
+      lastPositionTime.current = null;
 
-        setStatus("Walking is being verified.");
+      setDistance(0);
+      setSpeed(0);
+      setSteps(0);
 
-        if (gpsSpeed !== null) {
-          setSpeed(
-            Math.max(0, gpsSpeed * 3.6)
-          );
-        }
+      setRunning(true);
 
-        if (lastPosition.current) {
-          const segment = calculateDistance(
-            lastPosition.current.latitude,
-            lastPosition.current.longitude,
-            latitude,
-            longitude
-          );
+      setStatus(
+        "GPS verification is active."
+      );
 
-          const elapsed =
-            (Date.now() - startTime.current) / 1000;
+      gpsCleanup.current =
+        startGPS(
+          async (position) => {
+            const {
+              latitude,
+              longitude,
+              accuracy,
+              speed: gpsSpeed
+            } = position.coords;
 
-          const segmentSpeed =
-            elapsed > 0
-              ? segment / elapsed * 3600
-              : 0;
+            setGpsAccuracy(accuracy);
 
-          /*
-            Reject obviously impossible movement.
-            This is only one anti-cheat layer.
-          */
-          if (
-            segment > 0 &&
-            segmentSpeed <= 12
-          ) {
-            verifiedDistance.current += segment;
+            if (accuracy > 60) {
+              setStatus(
+                "GPS accuracy is weak. Move somewhere with a clearer signal."
+              );
 
-            setDistance(
-              verifiedDistance.current
+              return;
+            }
+
+            const now = Date.now();
+
+            let calculatedSpeed = 0;
+
+            if (
+              lastPosition.current &&
+              lastPositionTime.current
+            ) {
+              const distanceMeters =
+                calculateDistanceMeters(
+                  lastPosition.current.latitude,
+                  lastPosition.current.longitude,
+                  latitude,
+                  longitude
+                );
+
+              const seconds =
+                (now -
+                  lastPositionTime.current) /
+                1000;
+
+              if (seconds > 0) {
+                calculatedSpeed =
+                  (distanceMeters / seconds) *
+                  3.6;
+              }
+            }
+
+            const displayedSpeed =
+              gpsSpeed !== null &&
+              gpsSpeed !== undefined
+                ? Math.max(
+                    0,
+                    gpsSpeed * 3.6
+                  )
+                : calculatedSpeed;
+
+            setSpeed(
+              Number(
+                displayedSpeed.toFixed(1)
+              )
+            );
+
+            try {
+              const result =
+                await sendWalkPosition(
+                  account.walkingId,
+                  sessionId.current,
+                  {
+                    latitude,
+                    longitude,
+                    accuracy,
+                    timestamp: now
+                  }
+                );
+
+              setDistance(
+                Number(
+                  result.distanceKm || 0
+                )
+              );
+
+              if (result.rejected) {
+                setStatus(
+                  result.reason ||
+                  "GPS point rejected."
+                );
+              } else {
+                setStatus(
+                  "Walk is being verified."
+                );
+              }
+            } catch (error) {
+              console.error(error);
+
+              setStatus(
+                "Connection problem while verifying GPS."
+              );
+            }
+
+            lastPosition.current = {
+              latitude,
+              longitude
+            };
+
+            lastPositionTime.current =
+              now;
+          },
+          (error) => {
+            setStatus(
+              error.message ||
+              "Unable to access GPS."
             );
           }
-        }
-
-        lastPosition.current = {
-          latitude,
-          longitude
-        };
-      },
-      (error) => {
-        setStatus(
-          error.message ||
-          "Unable to access GPS."
         );
-      }
-    );
 
-    motionCleanup.current =
-      startMotionTracking((motion) => {
-        if (motion.steps !== undefined) {
-          lastStepCount.current =
-            motion.steps;
+      motionCleanup.current =
+        startMotionTracking(
+          (motion) => {
+            if (
+              motion.steps !== undefined
+            ) {
+              setSteps(
+                motion.steps
+              );
+            }
+          }
+        );
+    } catch (error) {
+      console.error(error);
 
-          setSteps(motion.steps);
-        }
-      });
+      setStatus(
+        error.message ||
+        "Could not start the walk."
+      );
+    }
   }
 
   async function finishWalk() {
-    stopEverything();
-    setRunning(false);
-
-    const walked =
-      verifiedDistance.current;
-
-    if (walked < 0.01) {
-      setStatus("No meaningful verified distance recorded.");
+    if (!sessionId.current) {
       return;
     }
 
-    const existing =
-      getAccount() || account;
+    setStatus(
+      "Finishing and verifying walk..."
+    );
 
-    if (!existing) {
-      setStatus("Account not found.");
-      return;
-    }
-
-    const oldDistance =
-      Number(existing.totalDistance || 0);
-
-    const newDistance =
-      oldDistance + walked;
-
-    const oldPoints =
-      Number(existing.points || 0);
-
-    const oldCompletedWalks =
-      Number(existing.completedWalks || 0);
-
-    const oldLifetime =
-      Number(existing.lifetimeDistance || 0);
-
-    const oldFiveKm =
-      Math.floor(oldDistance / 5);
-
-    const newFiveKm =
-      Math.floor(newDistance / 5);
-
-    const earned =
-      Math.max(0, newFiveKm - oldFiveKm);
-
-    const updated = {
-      ...existing,
-      totalDistance: newDistance,
-      lifetimeDistance:
-        oldLifetime + walked,
-      points:
-        oldPoints + earned,
-      completedWalks:
-        oldCompletedWalks + 1
-    };
-
-    saveAccount(updated);
-    updateAccount(updated);
+    stopTracking();
 
     try {
-      await addDistance(
-        updated.walkingId,
-        walked,
-        earned
+      const result =
+        await finishWalkSession(
+          account.walkingId,
+          sessionId.current
+        );
+
+      const current =
+        getAccount() || account;
+
+      const updated = {
+        ...current,
+
+        points:
+          result.account.points,
+
+        totalDistance:
+          result.account.totalDistance,
+
+        lifetimeDistance:
+          result.account.lifetimeDistance,
+
+        completedWalks:
+          result.account.completedWalks
+      };
+
+      saveAccount(updated);
+      updateAccount(updated);
+
+      setRunning(false);
+      sessionId.current = null;
+      lastPosition.current = null;
+      lastPositionTime.current = null;
+
+      setDistance(
+        result.distanceKm || 0
       );
+
+      if (result.earnedPoints > 0) {
+        setStatus(
+          `Walk complete! You earned ${result.earnedPoints} point${
+            result.earnedPoints === 1
+              ? ""
+              : "s"
+          }.`
+        );
+      } else {
+        setStatus(
+          `Walk complete. ${Number(
+            result.distanceKm || 0
+          ).toFixed(2)} km verified.`
+        );
+      }
     } catch (error) {
       console.error(error);
-    }
 
-    setDistance(0);
-    verifiedDistance.current = 0;
+      setRunning(false);
+      sessionId.current = null;
 
-    if (earned > 0) {
       setStatus(
-        `Walk complete! You earned ${earned} point${
-          earned === 1 ? "" : "s"
-        }.`
-      );
-    } else {
-      setStatus(
-        `Walk complete. You walked ${walked.toFixed(
-          2
-        )} km.`
+        error.message ||
+        "Could not finish the walk."
       );
     }
   }
@@ -256,31 +318,46 @@ export default function Walk({ account, updateAccount }) {
         </p>
 
         <div className="distance-number">
-          {distance.toFixed(2)}
+          {Number(distance).toFixed(2)}
         </div>
 
-        <p className="km-label">kilometres</p>
+        <p className="km-label">
+          kilometres
+        </p>
 
         <div className="walk-metrics">
           <div>
             <strong>
               {speed.toFixed(1)}
             </strong>
-            <span>km/h</span>
+
+            <span>
+              km/h
+            </span>
           </div>
 
           <div>
-            <strong>{steps}</strong>
-            <span>steps</span>
+            <strong>
+              {steps}
+            </strong>
+
+            <span>
+              steps
+            </span>
           </div>
 
           <div>
             <strong>
               {gpsAccuracy
-                ? `${Math.round(gpsAccuracy)}m`
+                ? `${Math.round(
+                    gpsAccuracy
+                  )}m`
                 : "--"}
             </strong>
-            <span>GPS accuracy</span>
+
+            <span>
+              GPS accuracy
+            </span>
           </div>
         </div>
 
@@ -305,10 +382,50 @@ export default function Walk({ account, updateAccount }) {
         )}
 
         <p className="warning-text">
-          Keep GPS enabled and carry your phone naturally.
-          The app rejects suspicious movement speeds.
+          Keep GPS enabled and carry your
+          phone normally. Suspicious movement
+          speeds and invalid GPS jumps can be
+          rejected.
         </p>
       </section>
     </div>
+  );
+}
+
+function calculateDistanceMeters(
+  lat1,
+  lon1,
+  lat2,
+  lon2
+) {
+  const R = 6371000;
+
+  const dLat =
+    (lat2 - lat1) *
+    Math.PI /
+    180;
+
+  const dLon =
+    (lon2 - lon1) *
+    Math.PI /
+    180;
+
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(
+      lat1 * Math.PI / 180
+    ) *
+    Math.cos(
+      lat2 * Math.PI / 180
+    ) *
+    Math.sin(dLon / 2) ** 2;
+
+  return (
+    R *
+    2 *
+    Math.atan2(
+      Math.sqrt(a),
+      Math.sqrt(1 - a)
+    )
   );
 }
