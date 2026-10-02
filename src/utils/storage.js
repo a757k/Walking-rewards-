@@ -10,7 +10,7 @@ export function getAccount() {
 
     return JSON.parse(saved);
   } catch (error) {
-    console.error("Could not load account:", error);
+    console.error("Failed to load local account:", error);
     return null;
   }
 }
@@ -40,4 +40,17 @@ export function createLocalAccount() {
   saveAccount(account);
 
   return account;
+}
+
+export function updateLocalAccount(data) {
+  const current = getAccount() || {};
+
+  const updated = {
+    ...current,
+    ...data
+  };
+
+  saveAccount(updated);
+
+  return updated;
 }
