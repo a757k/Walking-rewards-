@@ -1,120 +1,72 @@
-import { useEffect, useState } from "react";
-import WalkStats from "./WalkStats";
-import ProgressBar from "./ProgressBar";
-import { createLocalAccount, getAccount, saveAccount } from "../utils/storage";
-import { createAccount } from "../utils/api";
-
 export default function Dashboard({ account, setPage }) {
-  const [currentAccount, setCurrentAccount] = useState(account);
+  const points = account?.points || 0;
+  const totalDistance = Number(account?.totalDistance || 0);
+  const completedWalks = account?.completedWalks || 0;
 
-  useEffect(() => {
-    async function setup() {
-      if (account) {
-        setCurrentAccount(account);
-        return;
-      }
-
-      let local = getAccount();
-
-      if (!local) {
-        local = createLocalAccount();
-
-        try {
-          const serverAccount = await createAccount();
-
-          local = {
-            ...local,
-            walkingId: serverAccount.walkingId,
-            transferPin: serverAccount.transferPin
-          };
-
-          saveAccount(local);
-        } catch (error) {
-          console.error("Account server setup failed:", error);
-        }
-      }
-
-      setCurrentAccount(local);
-    }
-
-    setup();
-  }, [account]);
-
-  if (!currentAccount) {
-    return (
-      <section className="card">
-        <h2>Loading...</h2>
-      </section>
-    );
-  }
-
-  const distance = Number(currentAccount.totalDistance || 0);
-
-  const progress = Math.min(
-    100,
-    (distance % 5) / 5 * 100
-  );
+  const progress = totalDistance % 5;
+  const progressPercent = (progress / 5) * 100;
 
   return (
-    <div className="page">
-      <section className="hero-card">
-        <p className="small-label">YOUR POINTS</p>
+    <div className="dashboard">
+      <section className="card">
+        <h2>Welcome to Walking Rewards</h2>
 
-        <div className="big-number">
-          {currentAccount.points || 0}
+        <p>
+          Walk verified kilometres, earn points, and use your
+          points for available rewards.
+        </p>
+      </section>
+
+      <section className="stats-grid">
+        <div className="card">
+          <span>Points</span>
+          <strong>{points}</strong>
         </div>
 
-        <p>points</p>
+        <div className="card">
+          <span>Total Distance</span>
+          <strong>{totalDistance.toFixed(2)} km</strong>
+        </div>
 
+        <div className="card">
+          <span>Completed Walks</span>
+          <strong>{completedWalks}</strong>
+        </div>
+      </section>
+
+      <section className="card">
+        <h3>Next Point</h3>
+
+        <p>
+          {progress.toFixed(2)} km of 5 km completed
+        </p>
+
+        <div className="progress-container">
+          <div
+            className="progress-bar"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+
+        <p>
+          {(5 - progress).toFixed(2)} km remaining
+        </p>
+      </section>
+
+      <section className="dashboard-actions">
         <button
           className="primary-button"
           onClick={() => setPage("walk")}
         >
           Start Walking
         </button>
-      </section>
 
-      <WalkStats account={currentAccount} />
-
-      <section className="card">
-        <div className="section-header">
-          <h2>Next point</h2>
-          <span>
-            {(5 - (distance % 5)).toFixed(2)} km
-          </span>
-        </div>
-
-        <ProgressBar value={progress} />
-
-        <p className="muted">
-          Walk 5 verified kilometres to earn another point.
-        </p>
-      </section>
-
-      <section className="card">
-        <h2>How it works</h2>
-
-        <div className="steps">
-          <div>
-            <strong>1</strong>
-            <span>Start a walk</span>
-          </div>
-
-          <div>
-            <strong>2</strong>
-            <span>Walk naturally with GPS on</span>
-          </div>
-
-          <div>
-            <strong>3</strong>
-            <span>Complete 5 verified km</span>
-          </div>
-
-          <div>
-            <strong>4</strong>
-            <span>Earn points for rewards</span>
-          </div>
-        </div>
+        <button
+          className="secondary-button"
+          onClick={() => setPage("rewards")}
+        >
+          View Rewards
+        </button>
       </section>
     </div>
   );
