@@ -1,0 +1,10 @@
+{
+  "name": "Walking Rewards",
+  "short_name": "Walking Rewards",
+  "description": "Walk, earn points and use them for sponsored rewards.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#111827",
+  "orientation": "portrait"
+}
