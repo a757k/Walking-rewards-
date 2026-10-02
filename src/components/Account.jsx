@@ -1,260 +1,226 @@
 import { useState } from "react";
-
+import {
+  createAccount,
+  transferAccount
+} from "../utils/api";
 import {
   saveAccount,
   clearAccount
 } from "../utils/storage";
 
-import {
-  createAccount,
-  transferAccount
-} from "../utils/api";
-
 export default function Account({
   account,
-  updateAccount
+  updateAccount,
+  firstSetup = false
 }) {
-  const [mode, setMode] =
-    useState("view");
+  const [mode, setMode] = useState("create");
+  const [walkingId, setWalkingId] = useState("");
+  const [transferPin, setTransferPin] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-  const [walkingId, setWalkingId] =
-    useState("");
-
-  const [pin, setPin] =
-    useState("");
-
-  const [message, setMessage] =
-    useState("");
-
-  const [loading, setLoading] =
-    useState(false);
-
-  async function createNewAccount() {
+  async function handleCreate() {
     setLoading(true);
+    setError("");
     setMessage("");
 
     try {
-      const serverAccount =
-        await createAccount();
+      const result = await createAccount();
 
-      saveAccount(
-        serverAccount
-      );
+      if (!result.account || !result.account.walkingId) {
+        throw new Error("The server did not return an account.");
+      }
 
-      updateAccount(
-        serverAccount
-      );
+      saveAccount(result.account);
+      updateAccount(result.account);
 
-      setMessage(
-        "Walking Account created successfully."
-      );
-    } catch (error) {
-      setMessage(
-        error.message ||
-        "Could not create account."
-      );
+      setMessage("Account created successfully.");
+    } catch (err) {
+      setError(err.message || "Could not create account.");
     } finally {
       setLoading(false);
     }
   }
 
-  async function transfer() {
-    if (!walkingId.trim()) {
-      setMessage(
-        "Enter your Walking ID."
-      );
+  async function handleTransfer() {
+    const id = walkingId.trim().toUpperCase();
+    const pin = transferPin.trim();
 
-      return;
-    }
-
-    if (!pin.trim()) {
-      setMessage(
-        "Enter your transfer PIN."
-      );
-
+    if (!id || !pin) {
+      setError("Enter both your Walking ID and Transfer PIN.");
       return;
     }
 
     setLoading(true);
+    setError("");
     setMessage("");
 
     try {
-      const result =
-        await transferAccount(
-          walkingId.trim(),
-          pin.trim()
-        );
+      const result = await transferAccount(id, pin);
 
-      saveAccount(result);
+      if (!result.account || !result.account.walkingId) {
+        throw new Error("The server did not return your account.");
+      }
 
-      updateAccount(result);
+      saveAccount(result.account);
+      updateAccount(result.account);
 
-      setMode("view");
-
-      setWalkingId("");
-      setPin("");
-
-      setMessage(
-        "Account transferred successfully."
-      );
-    } catch (error) {
-      setMessage(
-        error.message ||
-        "Transfer failed."
-      );
+      setMessage("Account transferred successfully.");
+    } catch (err) {
+      setError(err.message || "Could not transfer account.");
     } finally {
       setLoading(false);
     }
   }
 
-  function removeLocalAccount() {
+  function handleRemoveLocalAccount() {
     clearAccount();
-
     updateAccount(null);
+  }
 
-    setMessage(
-      "This device's saved account has been removed."
+  if (firstSetup || !account) {
+    return (
+      <div className="account-page">
+        <div className="card">
+          <h2>Walking Rewards</h2>
+
+          <p>
+            Create an account to start tracking your verified walking
+            distance and rewards.
+          </p>
+
+          <div className="account-tabs">
+            <button
+              className={mode === "create" ? "active" : ""}
+              onClick={() => {
+                setMode("create");
+                setError("");
+                setMessage("");
+              }}
+            >
+              Create Account
+            </button>
+
+            <button
+              className={mode === "transfer" ? "active" : ""}
+              onClick={() => {
+                setMode("transfer");
+                setError("");
+                setMessage("");
+              }}
+            >
+              Transfer Account
+            </button>
+          </div>
+
+          {mode === "create" && (
+            <div>
+              <h3>Create a new account</h3>
+
+              <p>
+                Your account will receive a unique Walking ID and
+                Transfer PIN.
+              </p>
+
+              <button
+                className="primary-button"
+                onClick={handleCreate}
+                disabled={loading}
+              >
+                {loading ? "Creating..." : "Create Account"}
+              </button>
+            </div>
+          )}
+
+          {mode === "transfer" && (
+            <div>
+              <h3>Transfer your account</h3>
+
+              <input
+                type="text"
+                placeholder="Walking ID"
+                value={walkingId}
+                onChange={(e) => setWalkingId(e.target.value)}
+                autoComplete="off"
+              />
+
+              <input
+                type="text"
+                inputMode="numeric"
+                placeholder="Transfer PIN"
+                value={transferPin}
+                onChange={(e) => setTransferPin(e.target.value)}
+                autoComplete="off"
+              />
+
+              <button
+                className="primary-button"
+                onClick={handleTransfer}
+                disabled={loading}
+              >
+                {loading ? "Transferring..." : "Transfer Account"}
+              </button>
+            </div>
+          )}
+
+          {message && (
+            <p className="success-message">
+              {message}
+            </p>
+          )}
+
+          {error && (
+            <p className="error-message">
+              {error}
+            </p>
+          )}
+        </div>
+      </div>
     );
   }
 
   return (
-    <div className="page">
-      <section className="card">
-        <h2>
-          Your Walking Account
-        </h2>
+    <div className="account-page">
+      <div className="card">
+        <h2>Your Account</h2>
 
-        {account ? (
-          <>
-            <div className="account-row">
-              <span>
-                Walking ID
-              </span>
+        <div className="account-info">
+          <div>
+            <span>Walking ID</span>
+            <strong>{account.walkingId}</strong>
+          </div>
 
-              <strong>
-                {account.walkingId}
-              </strong>
-            </div>
+          <div>
+            <span>Transfer PIN</span>
+            <strong>{account.transferPin}</strong>
+          </div>
 
-            <div className="account-row">
-              <span>
-                Transfer PIN
-              </span>
+          <div>
+            <span>Points</span>
+            <strong>{account.points || 0}</strong>
+          </div>
 
-              <strong>
-                {account.transferPin}
-              </strong>
-            </div>
-
-            <p className="muted">
-              Keep your Walking ID and PIN
-              somewhere safe. They are used
-              to recover your account on another
-              device.
-            </p>
-          </>
-        ) : (
-          <button
-            className="primary-button"
-            onClick={
-              createNewAccount
-            }
-            disabled={loading}
-          >
-            {loading
-              ? "Creating..."
-              : "Create Walking Account"}
-          </button>
-        )}
-      </section>
-
-      <section className="card">
-        <h2>
-          Move to another device
-        </h2>
-
-        {mode === "view" ? (
-          <button
-            className="secondary-button"
-            onClick={() =>
-              setMode("transfer")
-            }
-          >
-            Transfer Account
-          </button>
-        ) : (
-          <>
-            <label>
-              Walking ID
-            </label>
-
-            <input
-              value={walkingId}
-              onChange={(e) =>
-                setWalkingId(
-                  e.target.value
-                )
-              }
-              placeholder="WR-XXXXXXXX"
-              autoCapitalize="characters"
-            />
-
-            <label>
-              Transfer PIN
-            </label>
-
-            <input
-              value={pin}
-              onChange={(e) =>
-                setPin(
-                  e.target.value
-                )
-              }
-              placeholder="6-digit PIN"
-              inputMode="numeric"
-              maxLength={6}
-            />
-
-            <button
-              className="primary-button"
-              onClick={transfer}
-              disabled={loading}
-            >
-              {loading
-                ? "Transferring..."
-                : "Transfer Account"}
-            </button>
-          </>
-        )}
-      </section>
-
-      {message && (
-        <div className="notice">
-          {message}
+          <div>
+            <span>Total Distance</span>
+            <strong>
+              {Number(account.totalDistance || 0).toFixed(2)} km
+            </strong>
+          </div>
         </div>
-      )}
 
-      <section className="card">
-        <h2>
-          This device
-        </h2>
-
-        <p className="muted">
-          Removing the local copy does not
-          delete the server account. You can
-          recover it with your Walking ID and
-          transfer PIN.
+        <p>
+          Keep your Walking ID and Transfer PIN somewhere safe.
+          They are used to recover your account on another device.
         </p>
 
         <button
-          className="danger-button"
-          onClick={
-            removeLocalAccount
-          }
+          className="secondary-button"
+          onClick={handleRemoveLocalAccount}
         >
-          Remove From This Device
+          Remove This Device
         </button>
-      </section>
+      </div>
     </div>
   );
 }
