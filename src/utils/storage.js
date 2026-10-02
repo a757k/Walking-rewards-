@@ -1,56 +1,73 @@
-const ACCOUNT_KEY = "walking_rewards_account";
+export default function Dashboard({ account, setPage }) {
+  const points = account?.points || 0;
+  const totalDistance = Number(account?.totalDistance || 0);
+  const completedWalks = account?.completedWalks || 0;
 
-export function getAccount() {
-  try {
-    const saved = localStorage.getItem(ACCOUNT_KEY);
+  const progress = totalDistance % 5;
+  const progressPercent = (progress / 5) * 100;
 
-    if (!saved) {
-      return null;
-    }
+  return (
+    <div className="dashboard">
+      <section className="card">
+        <h2>Welcome to Walking Rewards</h2>
 
-    return JSON.parse(saved);
-  } catch (error) {
-    console.error("Failed to load local account:", error);
-    return null;
-  }
-}
+        <p>
+          Walk verified kilometres, earn points, and use your
+          points for available rewards.
+        </p>
+      </section>
 
-export function saveAccount(account) {
-  localStorage.setItem(
-    ACCOUNT_KEY,
-    JSON.stringify(account)
+      <section className="stats-grid">
+        <div className="card">
+          <span>Points</span>
+          <strong>{points}</strong>
+        </div>
+
+        <div className="card">
+          <span>Total Distance</span>
+          <strong>{totalDistance.toFixed(2)} km</strong>
+        </div>
+
+        <div className="card">
+          <span>Completed Walks</span>
+          <strong>{completedWalks}</strong>
+        </div>
+      </section>
+
+      <section className="card">
+        <h3>Next Point</h3>
+
+        <p>
+          {progress.toFixed(2)} km of 5 km completed
+        </p>
+
+        <div className="progress-container">
+          <div
+            className="progress-bar"
+            style={{ width: `${progressPercent}%` }}
+          />
+        </div>
+
+        <p>
+          {(5 - progress).toFixed(2)} km remaining
+        </p>
+      </section>
+
+      <section className="dashboard-actions">
+        <button
+          className="primary-button"
+          onClick={() => setPage("walk")}
+        >
+          Start Walking
+        </button>
+
+        <button
+          className="secondary-button"
+          onClick={() => setPage("rewards")}
+        >
+          View Rewards
+        </button>
+      </section>
+    </div>
   );
-}
-
-export function clearAccount() {
-  localStorage.removeItem(ACCOUNT_KEY);
-}
-
-export function createLocalAccount() {
-  const account = {
-    walkingId: null,
-    transferPin: null,
-    points: 0,
-    totalDistance: 0,
-    lifetimeDistance: 0,
-    completedWalks: 0,
-    createdAt: new Date().toISOString()
-  };
-
-  saveAccount(account);
-
-  return account;
-}
-
-export function updateLocalAccount(data) {
-  const current = getAccount() || {};
-
-  const updated = {
-    ...current,
-    ...data
-  };
-
-  saveAccount(updated);
-
-  return updated;
 }
