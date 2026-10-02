@@ -2,21 +2,29 @@ async function request(
   endpoint,
   options = {}
 ) {
-  const response = await fetch(
-    `/.netlify/functions/${endpoint}`,
-    {
-      headers: {
-        "Content-Type":
-          "application/json",
-        ...(options.headers || {})
-      },
-      ...options
-    }
-  );
+  const response =
+    await fetch(
+      `/.netlify/functions/${endpoint}`,
+      {
+        headers: {
+          "Content-Type":
+            "application/json",
 
-  const data =
-    await response.json()
-      .catch(() => ({}));
+          ...(options.headers || {})
+        },
+
+        ...options
+      }
+    );
+
+  let data = {};
+
+  try {
+    data =
+      await response.json();
+  } catch {
+    data = {};
+  }
 
   if (!response.ok) {
     throw new Error(
@@ -33,6 +41,7 @@ export async function createAccount() {
     "account",
     {
       method: "POST",
+
       body: JSON.stringify({
         action: "create"
       })
@@ -48,6 +57,7 @@ export async function transferAccount(
     "account",
     {
       method: "POST",
+
       body: JSON.stringify({
         action: "transfer",
         walkingId,
@@ -57,20 +67,73 @@ export async function transferAccount(
   );
 }
 
-export async function addDistance(
-  walkingId,
-  distance,
-  earnedPoints
+export async function startWalkSession(
+  walkingId
 ) {
   return request(
     "account",
     {
       method: "POST",
+
       body: JSON.stringify({
-        action: "distance",
+        action: "startWalk",
+        walkingId
+      })
+    }
+  );
+}
+
+export async function sendWalkPosition(
+  walkingId,
+  sessionId,
+  position
+) {
+  return request(
+    "account",
+    {
+      method: "POST",
+
+      body: JSON.stringify({
+        action: "position",
         walkingId,
-        distance,
-        earnedPoints
+        sessionId,
+        position
+      })
+    }
+  );
+}
+
+export async function finishWalkSession(
+  walkingId,
+  sessionId
+) {
+  return request(
+    "account",
+    {
+      method: "POST",
+
+      body: JSON.stringify({
+        action: "finishWalk",
+        walkingId,
+        sessionId
+      })
+    }
+  );
+}
+
+export async function enterReward(
+  walkingId,
+  rewardId
+) {
+  return request(
+    "account",
+    {
+      method: "POST",
+
+      body: JSON.stringify({
+        action: "reward",
+        walkingId,
+        rewardId
       })
     }
   );
