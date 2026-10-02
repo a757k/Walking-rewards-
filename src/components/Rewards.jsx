@@ -1,60 +1,91 @@
 import { useState } from "react";
 import RewardCard from "./RewardCard";
 
-export default function Rewards({ account, updateAccount }) {
-  const [message, setMessage] = useState("");
+import {
+  enterReward
+} from "../utils/api";
+
+import {
+  saveAccount
+} from "../utils/storage";
+
+export default function Rewards({
+  account,
+  updateAccount
+}) {
+  const [message, setMessage] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(false);
 
   const rewards = [
     {
       id: "reward-10",
       title: "$10 Sponsored Reward",
       description:
-        "Use points toward a sponsored reward draw.",
+        "Use points to enter this sponsored reward draw.",
       cost: 10
     },
+
     {
       id: "reward-100",
       title: "$100 Sponsored Reward",
       description:
-        "Use points toward a larger sponsored reward draw.",
+        "Use points to enter this larger sponsored reward draw.",
       cost: 50
     }
   ];
 
-  function selectReward(reward) {
-    if (!account) {
-      setMessage("Account not available.");
-      return;
-    }
-
-    if (account.points < reward.cost) {
+  async function selectReward(reward) {
+    if (!account?.walkingId) {
       setMessage(
-        `You need ${reward.cost} points for this reward.`
+        "Your Walking Account is not available."
       );
+
       return;
     }
 
-    /*
-      This demo deducts points locally.
-      The actual draw/winner system must be handled
-      securely on the server before launch.
-    */
+    if (
+      Number(account.points || 0) <
+      reward.cost
+    ) {
+      setMessage(
+        `You need ${reward.cost} points.`
+      );
 
-    const updated = {
-      ...account,
-      points: account.points - reward.cost
-    };
+      return;
+    }
 
-    localStorage.setItem(
-      "walking_rewards_account",
-      JSON.stringify(updated)
-    );
+    setLoading(true);
+    setMessage("");
 
-    updateAccount(updated);
+    try {
+      const result =
+        await enterReward(
+          account.walkingId,
+          reward.id
+        );
 
-    setMessage(
-      `You used ${reward.cost} points.`
-    );
+      saveAccount(
+        result.account
+      );
+
+      updateAccount(
+        result.account
+      );
+
+      setMessage(
+        `Entry created successfully. You used ${reward.cost} points.`
+      );
+    } catch (error) {
+      setMessage(
+        error.message ||
+        "Could not create entry."
+      );
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
@@ -68,7 +99,9 @@ export default function Rewards({ account, updateAccount }) {
           {account?.points || 0}
         </div>
 
-        <p>points</p>
+        <p>
+          points
+        </p>
       </section>
 
       {message && (
@@ -77,22 +110,31 @@ export default function Rewards({ account, updateAccount }) {
         </div>
       )}
 
-      {rewards.map((reward) => (
-        <RewardCard
-          key={reward.id}
-          reward={reward}
-          onSelect={selectReward}
-          availablePoints={account?.points || 0}
-        />
-      ))}
+      {rewards.map(
+        (reward) => (
+          <RewardCard
+            key={reward.id}
+            reward={reward}
+            onSelect={
+              selectReward
+            }
+            availablePoints={
+              account?.points || 0
+            }
+            loading={loading}
+          />
+        )
+      )}
 
       <section className="card">
-        <h2>Important</h2>
+        <h2>
+          How points work
+        </h2>
 
         <p className="muted">
-          Rewards depend on available sponsors and the
-          final published rules. No purchase is required
-          to earn walking points.
+          Points are earned through verified
+          walking milestones. Reward entries
+          are recorded server-side.
         </p>
       </section>
     </div>
