@@ -1,4 +1,3 @@
-```javascript
 const { getStore } = require("@netlify/blobs");
 const crypto = require("node:crypto");
 
@@ -27,7 +26,7 @@ const REWARD_COSTS = {
   "reward-100": 50
 };
 
-export default async function handler(req) {
+async function handler(req) {
   if (req.method !== "POST") {
     return json(
       {
@@ -85,10 +84,18 @@ export default async function handler(req) {
 
 async function createAccount() {
   let walkingId;
+  let existingAccount;
 
   do {
     walkingId = generateWalkingId();
-  } while (await accounts.get(`account/${walkingId}`));
+
+    existingAccount = await accounts.get(
+      `account/${walkingId}`,
+      {
+        type: "json"
+      }
+    );
+  } while (existingAccount);
 
   const transferPin = generateTransferPin();
 
@@ -107,11 +114,6 @@ async function createAccount() {
     account
   );
 
-  /*
-    IMPORTANT:
-    The frontend expects the account
-    inside result.account.
-  */
   return json(
     {
       success: true,
@@ -162,11 +164,6 @@ async function transferAccount(body) {
     );
   }
 
-  /*
-    IMPORTANT:
-    The frontend expects the account
-    inside result.account.
-  */
   return json(
     {
       success: true,
@@ -394,10 +391,6 @@ async function addPosition(body) {
   const speedKmh =
     (meters / elapsedSeconds) * 3.6;
 
-  /*
-    Reject impossible movement.
-  */
-
   if (
     speedKmh > MAX_WALKING_SPEED_KMH ||
     meters > MAX_POINT_DISTANCE_METERS
@@ -421,10 +414,6 @@ async function addPosition(body) {
     );
   }
 
-  /*
-    Ignore tiny GPS noise.
-  */
-
   if (meters < 3) {
     session.points.push(newPoint);
 
@@ -446,10 +435,6 @@ async function addPosition(body) {
   session.distanceKm += meters / 1000;
 
   session.points.push(newPoint);
-
-  /*
-    Keep the session reasonably small.
-  */
 
   if (session.points.length > 2000) {
     session.points = session.points.slice(-1500);
@@ -664,7 +649,7 @@ async function getAccount(walkingId) {
     return null;
   }
 
-  return accounts.get(
+  return await accounts.get(
     `account/${walkingId}`,
     {
       type: "json"
@@ -700,7 +685,7 @@ function generateTransferPin() {
   return String(
     Math.floor(
       100000 +
-        Math.random() * 900000
+      Math.random() * 900000
     )
   );
 }
@@ -755,4 +740,7 @@ function json(data, status = 200) {
     }
   );
 }
-```
+
+module.exports = {
+  handler
+};
