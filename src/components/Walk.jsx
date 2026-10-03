@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+
 import {
   startGPS
 } from "../utils/gps";
@@ -22,21 +23,38 @@ export default function Walk({
   account,
   updateAccount
 }) {
-  const [running, setRunning] = useState(false);
-  const [distance, setDistance] = useState(0);
-  const [speed, setSpeed] = useState(0);
-  const [steps, setSteps] = useState(0);
-  const [gpsAccuracy, setGpsAccuracy] = useState(null);
-  const [status, setStatus] = useState(
-    "Ready to start"
-  );
+  const [running, setRunning] =
+    useState(false);
 
-  const gpsCleanup = useRef(null);
-  const motionCleanup = useRef(null);
+  const [distance, setDistance] =
+    useState(0);
 
-  const sessionId = useRef(null);
-  const lastPosition = useRef(null);
-  const lastPositionTime = useRef(null);
+  const [speed, setSpeed] =
+    useState(0);
+
+  const [steps, setSteps] =
+    useState(0);
+
+  const [gpsAccuracy, setGpsAccuracy] =
+    useState(null);
+
+  const [status, setStatus] =
+    useState("Ready to start");
+
+  const gpsCleanup =
+    useRef(null);
+
+  const motionCleanup =
+    useRef(null);
+
+  const sessionId =
+    useRef(null);
+
+  const lastPosition =
+    useRef(null);
+
+  const lastPositionTime =
+    useRef(null);
 
   useEffect(() => {
     return () => {
@@ -56,11 +74,93 @@ export default function Walk({
     }
   }
 
+  /*
+   * Check the country from the user's GPS coordinates.
+   *
+   * IL = Israel
+   *
+   * The coordinates are only used for the country check
+   * and are not saved by this app.
+   */
+  async function checkCountryAvailability() {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(
+          new Error(
+            "GPS is not supported on this device."
+          )
+        );
+
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            const latitude =
+              position.coords.latitude;
+
+            const longitude =
+              position.coords.longitude;
+
+            const response =
+              await fetch(
+                `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${encodeURIComponent(
+                  latitude
+                )}&longitude=${encodeURIComponent(
+                  longitude
+                )}&localityLanguage=en`
+              );
+
+            if (!response.ok) {
+              throw new Error(
+                "Could not verify your country."
+              );
+            }
+
+            const data =
+              await response.json();
+
+            const countryCode =
+              String(
+                data.countryCode || ""
+              ).toUpperCase();
+
+            if (
+              countryCode === "IL"
+            ) {
+              resolve(false);
+              return;
+            }
+
+            resolve(true);
+          } catch (error) {
+            reject(error);
+          }
+        },
+        (error) => {
+          reject(
+            new Error(
+              error.message ||
+              "Unable to access your location."
+            )
+          );
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 0
+        }
+      );
+    });
+  }
+
   async function beginWalk() {
     if (!navigator.geolocation) {
       setStatus(
         "GPS is not supported on this device."
       );
+
       return;
     }
 
@@ -68,11 +168,33 @@ export default function Walk({
       setStatus(
         "Your Walking Account has not been created yet."
       );
+
       return;
     }
 
     try {
-      setStatus("Starting verified walk...");
+      /*
+       * Check country BEFORE creating the
+       * walking session.
+       */
+      setStatus(
+        "Checking country availability..."
+      );
+
+      const available =
+        await checkCountryAvailability();
+
+      if (!available) {
+        setStatus(
+          "Walking Rewards is currently unavailable in this country."
+        );
+
+        return;
+      }
+
+      setStatus(
+        "Starting verified walk..."
+      );
 
       const result =
         await startWalkSession(
@@ -82,8 +204,11 @@ export default function Walk({
       sessionId.current =
         result.sessionId;
 
-      lastPosition.current = null;
-      lastPositionTime.current = null;
+      lastPosition.current =
+        null;
+
+      lastPositionTime.current =
+        null;
 
       setDistance(0);
       setSpeed(0);
@@ -105,7 +230,9 @@ export default function Walk({
               speed: gpsSpeed
             } = position.coords;
 
-            setGpsAccuracy(accuracy);
+            setGpsAccuracy(
+              accuracy
+            );
 
             if (accuracy > 60) {
               setStatus(
@@ -115,7 +242,8 @@ export default function Walk({
               return;
             }
 
-            const now = Date.now();
+            const now =
+              Date.now();
 
             let calculatedSpeed = 0;
 
@@ -138,7 +266,8 @@ export default function Walk({
 
               if (seconds > 0) {
                 calculatedSpeed =
-                  (distanceMeters / seconds) *
+                  (distanceMeters /
+                    seconds) *
                   3.6;
               }
             }
@@ -154,7 +283,9 @@ export default function Walk({
 
             setSpeed(
               Number(
-                displayedSpeed.toFixed(1)
+                displayedSpeed.toFixed(
+                  1
+                )
               )
             );
 
@@ -177,7 +308,9 @@ export default function Walk({
                 )
               );
 
-              if (result.rejected) {
+              if (
+                result.rejected
+              ) {
                 setStatus(
                   result.reason ||
                   "GPS point rejected."
@@ -215,7 +348,8 @@ export default function Walk({
         startMotionTracking(
           (motion) => {
             if (
-              motion.steps !== undefined
+              motion.steps !==
+              undefined
             ) {
               setSteps(
                 motion.steps
@@ -228,7 +362,7 @@ export default function Walk({
 
       setStatus(
         error.message ||
-        "Could not start the walk."
+        "Could not verify country or start the walk."
       );
     }
   }
@@ -252,7 +386,8 @@ export default function Walk({
         );
 
       const current =
-        getAccount() || account;
+        getAccount() ||
+        account;
 
       const updated = {
         ...current,
@@ -271,20 +406,31 @@ export default function Walk({
       };
 
       saveAccount(updated);
+
       updateAccount(updated);
 
       setRunning(false);
-      sessionId.current = null;
-      lastPosition.current = null;
-      lastPositionTime.current = null;
+
+      sessionId.current =
+        null;
+
+      lastPosition.current =
+        null;
+
+      lastPositionTime.current =
+        null;
 
       setDistance(
         result.distanceKm || 0
       );
 
-      if (result.earnedPoints > 0) {
+      if (
+        result.earnedPoints > 0
+      ) {
         setStatus(
-          `Walk complete! You earned ${result.earnedPoints} point${
+          `Walk complete! You earned ${
+            result.earnedPoints
+          } point${
             result.earnedPoints === 1
               ? ""
               : "s"
@@ -294,14 +440,18 @@ export default function Walk({
         setStatus(
           `Walk complete. ${Number(
             result.distanceKm || 0
-          ).toFixed(2)} km verified.`
+          ).toFixed(
+            2
+          )} km verified.`
         );
       }
     } catch (error) {
       console.error(error);
 
       setRunning(false);
-      sessionId.current = null;
+
+      sessionId.current =
+        null;
 
       setStatus(
         error.message ||
@@ -318,7 +468,9 @@ export default function Walk({
         </p>
 
         <div className="distance-number">
-          {Number(distance).toFixed(2)}
+          {Number(
+            distance
+          ).toFixed(2)}
         </div>
 
         <p className="km-label">
