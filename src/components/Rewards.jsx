@@ -1,3 +1,4 @@
+```jsx
 import { useState } from "react";
 import RewardCard from "./RewardCard";
 
@@ -51,7 +52,9 @@ export default function Rewards({
       reward.cost
     ) {
       setMessage(
-        `You need ${reward.cost} points.`
+        "You need " +
+        reward.cost +
+        " points."
       );
 
       return;
@@ -76,7 +79,9 @@ export default function Rewards({
       );
 
       setMessage(
-        `Entry created successfully. You used ${reward.cost} points.`
+        "Entry created successfully. You used " +
+        reward.cost +
+        " points."
       );
     } catch (error) {
       setMessage(
@@ -140,3 +145,4 @@ export default function Rewards({
     </div>
   );
 }
+```
