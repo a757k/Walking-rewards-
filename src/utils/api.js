@@ -1,3 +1,4 @@
+```javascript
 async function request(
   endpoint,
   options = {}
@@ -123,7 +124,9 @@ export async function finishWalkSession(
 
 export async function enterReward(
   walkingId,
-  rewardId
+  rewardId,
+  paypal,
+  email
 ) {
   return request(
     "account",
@@ -133,8 +136,11 @@ export async function enterReward(
       body: JSON.stringify({
         action: "reward",
         walkingId,
-        rewardId
+        rewardId,
+        paypal,
+        email
       })
     }
   );
 }
+```
