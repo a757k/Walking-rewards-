@@ -1,4 +1,3 @@
-```jsx
 import { useState } from "react";
 import RewardCard from "./RewardCard";
 
@@ -43,7 +42,6 @@ export default function Rewards({
       setMessage(
         "Your Walking Account is not available."
       );
-
       return;
     }
 
@@ -56,7 +54,6 @@ export default function Rewards({
         reward.cost +
         " points."
       );
-
       return;
     }
 
@@ -145,4 +142,3 @@ export default function Rewards({
     </div>
   );
 }
-```
