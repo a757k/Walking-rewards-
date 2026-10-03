@@ -1,3 +1,4 @@
+```javascript
 import { getStore } from "@netlify/blobs";
 import crypto from "node:crypto";
 
@@ -22,11 +23,6 @@ export default async function handler(req) {
   }
 
   try {
-    /*
-     * IMPORTANT:
-     * Netlify Blobs must be initialized inside the function
-     * request when using automatic Netlify configuration.
-     */
     const accounts = getStore({
       name: "walking-accounts",
       consistency: "strong"
@@ -45,18 +41,10 @@ export default async function handler(req) {
     const body = await req.json();
 
     switch (body.action) {
-      /*
-       * Support BOTH versions:
-       * "create" and "createAccount"
-       */
       case "create":
       case "createAccount":
         return await createAccount(accounts);
 
-      /*
-       * Support BOTH versions:
-       * "transfer" and "transferAccount"
-       */
       case "transfer":
       case "transferAccount":
         return await transferAccount(body, accounts);
@@ -752,7 +740,7 @@ async function createRewardEntry(
   const rewardId =
     String(
       body.rewardId || ""
-    );
+    ).trim();
 
   const cost =
     REWARD_COSTS[rewardId];
@@ -762,6 +750,65 @@ async function createRewardEntry(
       {
         error:
           "Invalid reward."
+      },
+      400
+    );
+  }
+
+  /*
+   * PayPal is REQUIRED.
+   */
+  const paypal =
+    String(
+      body.paypal || ""
+    ).trim();
+
+  if (!paypal) {
+    return json(
+      {
+        error:
+          "PayPal email/address is required."
+      },
+      400
+    );
+  }
+
+  if (paypal.length > 200) {
+    return json(
+      {
+        error:
+          "PayPal email/address is too long."
+      },
+      400
+    );
+  }
+
+  /*
+   * Contact email is OPTIONAL.
+   */
+  const email =
+    String(
+      body.email || ""
+    ).trim();
+
+  if (email.length > 200) {
+    return json(
+      {
+        error:
+          "Email address is too long."
+      },
+      400
+    );
+  }
+
+  if (
+    email &&
+    !isValidEmail(email)
+  ) {
+    return json(
+      {
+        error:
+          "Please enter a valid email address."
       },
       400
     );
@@ -796,6 +843,10 @@ async function createRewardEntry(
     );
   }
 
+  /*
+   * Deduct the points only after
+   * all required information is valid.
+   */
   account.points -= cost;
 
   account.updatedAt =
@@ -809,9 +860,22 @@ async function createRewardEntry(
     walkingId,
     rewardId,
     cost,
+
+    /*
+     * Private payment/contact information.
+     * This is stored server-side in
+     * walking-rewards.
+     */
+    paypal,
+    email: email || null,
+
     createdAt:
       new Date().toISOString(),
-    status: "active"
+
+    status: "active",
+    winner: false,
+    paid: false,
+    paidAt: null
   };
 
   await rewards.setJSON(
@@ -896,6 +960,15 @@ function generateTransferPin() {
 }
 
 
+function isValidEmail(
+  value
+) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    value
+  );
+}
+
+
 function haversineMeters(
   lat1,
   lon1,
@@ -952,3 +1025,4 @@ function json(
     }
   );
 }
+```
