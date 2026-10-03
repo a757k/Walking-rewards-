@@ -741,6 +741,4 @@ function json(data, status = 200) {
   );
 }
 
-module.exports = {
-  handler
-};
+export { handler };
