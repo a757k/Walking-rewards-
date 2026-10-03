@@ -1,4 +1,3 @@
-```jsx
 import { useState } from "react";
 import RewardCard from "./RewardCard";
 
@@ -20,15 +19,6 @@ export default function Rewards({
   const [loading, setLoading] =
     useState(false);
 
-  const [selectedReward, setSelectedReward] =
-    useState(null);
-
-  const [paypal, setPaypal] =
-    useState("");
-
-  const [email, setEmail] =
-    useState("");
-
   const rewards = [
     {
       id: "reward-10",
@@ -47,7 +37,7 @@ export default function Rewards({
     }
   ];
 
-  function selectReward(reward) {
+  async function selectReward(reward) {
     if (!account?.walkingId) {
       setMessage(
         "Your Walking Account is not available."
@@ -67,55 +57,6 @@ export default function Rewards({
       return;
     }
 
-    setMessage("");
-    setPaypal("");
-    setEmail("");
-    setSelectedReward(reward);
-  }
-
-  function cancelEntry() {
-    if (loading) {
-      return;
-    }
-
-    setSelectedReward(null);
-    setPaypal("");
-    setEmail("");
-    setMessage("");
-  }
-
-  async function confirmEntry() {
-    if (!selectedReward) {
-      return;
-    }
-
-    if (!paypal.trim()) {
-      setMessage(
-        "PayPal email/address is required."
-      );
-
-      return;
-    }
-
-    if (!account?.walkingId) {
-      setMessage(
-        "Your Walking Account is not available."
-      );
-
-      return;
-    }
-
-    if (
-      Number(account.points || 0) <
-      selectedReward.cost
-    ) {
-      setMessage(
-        `You need ${selectedReward.cost} points.`
-      );
-
-      return;
-    }
-
     setLoading(true);
     setMessage("");
 
@@ -123,9 +64,7 @@ export default function Rewards({
       const result =
         await enterReward(
           account.walkingId,
-          selectedReward.id,
-          paypal.trim(),
-          email.trim()
+          reward.id
         );
 
       saveAccount(
@@ -136,12 +75,8 @@ export default function Rewards({
         result.account
       );
 
-      setSelectedReward(null);
-      setPaypal("");
-      setEmail("");
-
       setMessage(
-        `Entry created successfully. You used ${selectedReward.cost} points.`
+        `Entry created successfully. You used ${reward.cost} points.`
       );
     } catch (error) {
       setMessage(
@@ -175,101 +110,21 @@ export default function Rewards({
         </div>
       )}
 
-      {selectedReward && (
-        <section className="card">
-          <p className="small-label">
-            LOTTERY ENTRY
-          </p>
-
-          <h2>
-            {selectedReward.title}
-          </h2>
-
-          <p className="muted">
-            Enter your payment details
-            before submitting your entry.
-          </p>
-
-          <label>
-            PayPal email/address *
-          </label>
-
-          <input
-            type="text"
-            value={paypal}
-            onChange={(event) =>
-              setPaypal(
-                event.target.value
-              )
+      {rewards.map(
+        (reward) => (
+          <RewardCard
+            key={reward.id}
+            reward={reward}
+            onSelect={
+              selectReward
             }
-            placeholder="your-paypal@example.com"
-            autoComplete="off"
-          />
-
-          <label>
-            Contact email (optional)
-          </label>
-
-          <input
-            type="email"
-            value={email}
-            onChange={(event) =>
-              setEmail(
-                event.target.value
-              )
+            availablePoints={
+              account?.points || 0
             }
-            placeholder="your@email.com"
-            autoComplete="email"
+            loading={loading}
           />
-
-          <p className="muted">
-            Your PayPal address is required
-            so the prize can be sent if you
-            are selected. Your contact email
-            is optional.
-          </p>
-
-          <div className="reward-bottom">
-            <button
-              className="disabled-button"
-              disabled={loading}
-              onClick={cancelEntry}
-            >
-              Cancel
-            </button>
-
-            <button
-              className="primary-button"
-              disabled={
-                loading ||
-                !paypal.trim()
-              }
-              onClick={confirmEntry}
-            >
-              {loading
-                ? "Submitting..."
-                : `Confirm Entry (${selectedReward.cost} points)`}
-            </button>
-          </div>
-        </section>
+        )
       )}
-
-      {!selectedReward &&
-        rewards.map(
-          (reward) => (
-            <RewardCard
-              key={reward.id}
-              reward={reward}
-              onSelect={
-                selectReward
-              }
-              availablePoints={
-                account?.points || 0
-              }
-              loading={loading}
-            />
-          )
-        )}
 
       <section className="card">
         <h2>
@@ -279,10 +134,9 @@ export default function Rewards({
         <p className="muted">
           Points are earned through verified
           walking milestones. Reward entries
-          are recorded securely server-side.
+          are recorded server-side.
         </p>
       </section>
     </div>
   );
 }
-```
