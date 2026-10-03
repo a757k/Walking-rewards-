@@ -1,5 +1,5 @@
-const { getStore } = require("@netlify/blobs");
-const crypto = require("node:crypto");
+import { getStore } from "@netlify/blobs";
+import crypto from "node:crypto";
 
 const accounts = getStore({
   name: "walking-accounts",
