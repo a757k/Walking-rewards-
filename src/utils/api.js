@@ -1,4 +1,3 @@
-```javascript
 async function request(endpoint, options = {}) {
   const response = await fetch(
     "/.netlify/functions/" + endpoint,
@@ -110,4 +109,3 @@ export async function enterReward(
     })
   });
 }
-```
