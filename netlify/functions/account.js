@@ -70,27 +70,27 @@ export default async function handler(req) {
         return await enterReward(body, accounts, rewards);
 
       case "adminListRewards":
-        requireAdmin(body);
+        await requireAdmin(body, accounts);
         return await adminListRewards(rewards, accounts);
 
       case "adminCreateReward":
-        requireAdmin(body);
+        await requireAdmin(body, accounts);
         return await adminCreateReward(body, rewards);
 
       case "adminUpdateReward":
-        requireAdmin(body);
+        await requireAdmin(body, accounts);
         return await adminUpdateReward(body, rewards);
 
       case "adminDeleteReward":
-        requireAdmin(body);
+        await requireAdmin(body, accounts);
         return await adminDeleteReward(body, rewards);
 
       case "adminApproveAward":
-        requireAdmin(body);
+        await requireAdmin(body, accounts);
         return await adminApproveAward(body, rewards);
 
       case "adminMarkAwardSent":
-        requireAdmin(body);
+        await requireAdmin(body, accounts);
         return await adminMarkAwardSent(body, rewards);
 
       default:
@@ -116,26 +116,17 @@ export default async function handler(req) {
    ADMIN SECURITY
 ========================= */
 
-function requireAdmin(body) {
-  const configuredPassword =
-    process.env.ADMIN_PASSWORD;
+async function requireAdmin(body, accounts) {
+  const suppliedId = normalizeWalkingId(body.adminWalkingId);
+  const suppliedPin = String(body.adminTransferPin || "").trim();
 
-  if (!configuredPassword) {
-    throw new Error(
-      "Administrator password is not configured."
-    );
+  if (suppliedId !== ADMIN_WALKING_ID || !suppliedPin) {
+    throw new Error("Admin authentication failed.");
   }
 
-  const suppliedId =
-    normalizeWalkingId(body.adminWalkingId);
+  const adminAccount = await getAccount(accounts, ADMIN_WALKING_ID);
 
-  const suppliedPassword =
-    String(body.adminPassword || "");
-
-  if (
-    suppliedId !== ADMIN_WALKING_ID ||
-    suppliedPassword !== configuredPassword
-  ) {
+  if (!adminAccount || adminAccount.transferPin !== suppliedPin) {
     throw new Error("Admin authentication failed.");
   }
 }
@@ -146,17 +137,6 @@ function requireAdmin(body) {
 ========================= */
 
 async function createAccount(body, accounts) {
-  const email = normalizeEmail(body.email);
-  const paypalEmail = normalizeEmail(body.paypalEmail);
-
-  if (email && !isValidEmail(email)) {
-    return json({ error: "Invalid email address." }, 400);
-  }
-
-  if (paypalEmail && !isValidEmail(paypalEmail)) {
-    return json({ error: "Invalid PayPal email address." }, 400);
-  }
-
   let walkingId;
   let existingAccount;
 
@@ -174,8 +154,6 @@ async function createAccount(body, accounts) {
   const account = {
     walkingId,
     transferPin: generateTransferPin(),
-    email,
-    paypalEmail,
     points: 0,
     totalDistance: 0,
     lifetimeDistance: 0,
@@ -568,11 +546,8 @@ async function finishWalk(body, accounts, walks) {
   const sessionDistance = Number(session.distanceKm || 0);
   const newDistance = oldDistance + sessionDistance;
 
-  const oldMilestones =
-    Math.floor(oldDistance / 1);
-
-  const newMilestones =
-    Math.floor(newDistance / 1);
+  const oldMilestones = Math.floor(oldDistance / 1);
+  const newMilestones = Math.floor(newDistance / 1);
 
   const earnedPoints = Math.max(
     0,
@@ -613,7 +588,6 @@ async function finishWalk(body, accounts, walks) {
 async function listRewards(rewards, accounts) {
   const allRewards = await getAllRewards(rewards);
 
-  // Expired rewards are drawn when the rewards list is requested.
   for (const reward of allRewards) {
     await drawIfExpired(reward, rewards, accounts);
   }
@@ -938,7 +912,6 @@ async function drawIfExpired(reward, rewards, accounts) {
 
   const shuffled = [...entries];
 
-  // Cryptographically secure Fisher-Yates shuffle.
   for (let i = shuffled.length - 1; i > 0; i--) {
     const j = crypto.randomInt(0, i + 1);
     [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
@@ -1130,18 +1103,6 @@ function normalizeWalkingId(value) {
   return String(value || "")
     .trim()
     .toUpperCase();
-}
-
-
-function normalizeEmail(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase();
-}
-
-
-function isValidEmail(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 
