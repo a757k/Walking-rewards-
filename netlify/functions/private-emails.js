@@ -2,45 +2,14 @@
 import { getStore } from "@netlify/blobs";
 
 const ADMIN_WALKING_ID = "WR-FB2EDP6K";
-const ADMIN_TRANSFER_PIN = "538623";
 
-function jsonResponse(statusCode, data) {
-  return {
-    statusCode,
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "no-store"
-    },
-    body: JSON.stringify(data)
-  };
-}
-
-function normalizeId(value) {
-  return String(value || "").trim().toUpperCase();
-}
-
-function normalizeEmail(value) {
-  return String(value || "").trim().toLowerCase();
-}
-
-function validEmail(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
-}
-
-async function verifyAdmin(body) {
-  return (
-    normalizeId(body.adminWalkingId) === ADMIN_WALKING_ID &&
-    String(body.adminTransferPin || "") === ADMIN_TRANSFER_PIN
-  );
-}
-
-export default async function handler(event) {
-  if (event.httpMethod !== "POST") {
-    return jsonResponse(405, { error: "Method not allowed." });
+export default async function handler(req) {
+  if (req.method !== "POST") {
+    return json({ error: "Method not allowed." }, 405);
   }
 
   try {
-    const body = JSON.parse(event.body || "{}");
+    const body = await req.json();
 
     const accounts = getStore({
       name: "walking-accounts",
@@ -52,7 +21,7 @@ export default async function handler(event) {
       consistency: "strong"
     });
 
-    // SAVE A USER'S EMAIL DETAILS
+    // SAVE USER EMAIL DETAILS
     if (body.action === "saveEmails") {
       const walkingId = normalizeId(body.walkingId);
       const transferPin = String(body.transferPin || "");
@@ -60,31 +29,28 @@ export default async function handler(event) {
       const paypalEmail = normalizeEmail(body.paypalEmail);
 
       if (!walkingId || !transferPin || !email || !paypalEmail) {
-        return jsonResponse(400, {
-          error: "Please provide your Walking ID, Transfer PIN and both email addresses."
-        });
+        return json({
+          error: "Please provide your Walking ID, PIN and both email addresses."
+        }, 400);
       }
 
       if (!validEmail(email) || !validEmail(paypalEmail)) {
-        return jsonResponse(400, {
+        return json({
           error: "Please enter valid email addresses."
-        });
+        }, 400);
       }
 
-      const account = await accounts.get(walkingId, {
-        type: "json"
-      });
+      const account = await accounts.get(
+        `account/${walkingId}`,
+        { type: "json" }
+      );
 
       if (!account) {
-        return jsonResponse(404, {
-          error: "Account not found."
-        });
+        return json({ error: "Account not found." }, 404);
       }
 
-      if (String(account.transferPin || "") !== transferPin) {
-        return jsonResponse(401, {
-          error: "Incorrect Transfer PIN."
-        });
+      if (String(account.transferPin) !== transferPin) {
+        return json({ error: "Incorrect Transfer PIN." }, 401);
       }
 
       await privateEmails.setJSON(`email/${walkingId}`, {
@@ -94,18 +60,18 @@ export default async function handler(event) {
         updatedAt: new Date().toISOString()
       });
 
-      return jsonResponse(200, {
+      return json({
         success: true,
-        message: "Email details saved."
+        message: "Email details saved successfully."
       });
     }
 
-    // ADMIN: VIEW ALL EMAIL DETAILS
+    // ADMIN: LIST ALL EMAIL RECORDS
     if (body.action === "adminListEmails") {
-      if (!(await verifyAdmin(body))) {
-        return jsonResponse(401, {
-          error: "Admin authentication failed."
-        });
+      const authorized = await verifyAdmin(body, accounts);
+
+      if (!authorized) {
+        return json({ error: "Admin authentication failed." }, 401);
       }
 
       const result = await privateEmails.list({
@@ -119,56 +85,110 @@ export default async function handler(event) {
           type: "json"
         });
 
-        if (record) records.push(record);
+        if (record) {
+          records.push(record);
+        }
       }
 
-      return jsonResponse(200, {
+      records.sort((a, b) =>
+        String(a.walkingId).localeCompare(String(b.walkingId))
+      );
+
+      return json({
         success: true,
         emails: records
       });
     }
 
-    // ADMIN: VIEW ONE USER'S EMAIL DETAILS
+    // ADMIN: GET ONE USER'S EMAIL RECORD
     if (body.action === "adminGetEmail") {
-      if (!(await verifyAdmin(body))) {
-        return jsonResponse(401, {
-          error: "Admin authentication failed."
-        });
+      const authorized = await verifyAdmin(body, accounts);
+
+      if (!authorized) {
+        return json({ error: "Admin authentication failed." }, 401);
       }
 
       const walkingId = normalizeId(body.walkingId);
 
       if (!walkingId) {
-        return jsonResponse(400, {
-          error: "Walking ID is required."
-        });
+        return json({ error: "Walking ID is required." }, 400);
       }
 
-      const record = await privateEmails.get(`email/${walkingId}`, {
-        type: "json"
-      });
+      const record = await privateEmails.get(
+        `email/${walkingId}`,
+        { type: "json" }
+      );
 
       if (!record) {
-        return jsonResponse(404, {
+        return json({
           error: "No email details found for this account."
-        });
+        }, 404);
       }
 
-      return jsonResponse(200, {
+      return json({
         success: true,
         email: record
       });
     }
 
-    return jsonResponse(400, {
-      error: "Unknown action."
-    });
+    return json({ error: "Unknown action." }, 400);
 
   } catch (error) {
-    console.error("Private emails function error:", error);
+    console.error("Private emails error:", error);
 
-    return jsonResponse(500, {
-      error: "A server error occurred."
-    });
+    return json({
+      error: "Server error. Please try again."
+    }, 500);
   }
+}
+
+
+// VERIFY ADMIN USING THE EXISTING ACCOUNT'S TRANSFER PIN
+async function verifyAdmin(body, accounts) {
+  const walkingId = normalizeId(body.adminWalkingId);
+  const transferPin = String(body.adminTransferPin || "");
+
+  if (walkingId !== ADMIN_WALKING_ID || !transferPin) {
+    return false;
+  }
+
+  const adminAccount = await accounts.get(
+    `account/${ADMIN_WALKING_ID}`,
+    { type: "json" }
+  );
+
+  if (!adminAccount) {
+    return false;
+  }
+
+  return String(adminAccount.transferPin) === transferPin;
+}
+
+
+function normalizeId(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+
+function normalizeEmail(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+
+function validEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+
+function json(data, status = 200) {
+  return new Response(
+    JSON.stringify(data),
+    {
+      status,
+      headers: {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store"
+      }
+    }
+  );
 }
