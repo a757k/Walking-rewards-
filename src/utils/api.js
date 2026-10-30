@@ -20,14 +20,11 @@ async function request(endpoint, options = {}) {
   }
 
   if (!response.ok) {
-    throw new Error(
-      data.error || "Request failed."
-    );
+    throw new Error(data.error || "Request failed.");
   }
 
   return data;
 }
-
 
 /* =========================
    ACCOUNT
@@ -41,7 +38,6 @@ export async function createAccount() {
     })
   });
 }
-
 
 export async function transferAccount(
   walkingId,
@@ -57,14 +53,33 @@ export async function transferAccount(
   });
 }
 
+/* =========================
+   PRIVATE EMAIL DETAILS
+========================= */
+
+export async function saveEmails(
+  walkingId,
+  transferPin,
+  email,
+  paypalEmail
+) {
+  return request("private-emails", {
+    method: "POST",
+    body: JSON.stringify({
+      action: "saveEmails",
+      walkingId,
+      transferPin,
+      email,
+      paypalEmail
+    })
+  });
+}
 
 /* =========================
    OUTDOOR WALKING
 ========================= */
 
-export async function startWalkSession(
-  walkingId
-) {
+export async function startWalkSession(walkingId) {
   return request("account", {
     method: "POST",
     body: JSON.stringify({
@@ -73,7 +88,6 @@ export async function startWalkSession(
     })
   });
 }
-
 
 export async function sendWalkPosition(
   walkingId,
@@ -91,14 +105,11 @@ export async function sendWalkPosition(
   });
 }
 
-
 /* =========================
    TREADMILL WALKING
 ========================= */
 
-export async function startTreadmillSession(
-  walkingId
-) {
+export async function startTreadmillSession(walkingId) {
   return request("account", {
     method: "POST",
     body: JSON.stringify({
@@ -107,7 +118,6 @@ export async function startTreadmillSession(
     })
   });
 }
-
 
 export async function sendTreadmillSteps(
   walkingId,
@@ -124,7 +134,6 @@ export async function sendTreadmillSteps(
     })
   });
 }
-
 
 /* =========================
    FINISH WALKING
@@ -143,7 +152,6 @@ export async function finishWalkSession(
     })
   });
 }
-
 
 /* =========================
    REWARDS
