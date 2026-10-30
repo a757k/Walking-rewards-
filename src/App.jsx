@@ -1,8 +1,10 @@
+
 import { useEffect, useState } from "react";
 import Dashboard from "./components/Dashboard";
 import Walk from "./components/Walk";
 import Rewards from "./components/Rewards";
 import Account from "./components/Account";
+import AdBanner from "./components/AdBanner";
 import { getAccount } from "./utils/storage";
 
 export default function App() {
@@ -31,7 +33,6 @@ export default function App() {
     }
   }
 
-  // No account yet
   if (!account) {
     return (
       <div className="app">
@@ -42,6 +43,8 @@ export default function App() {
             firstSetup={true}
           />
         </main>
+
+        <AdBanner />
       </div>
     );
   }
@@ -91,6 +94,8 @@ export default function App() {
           />
         )}
       </main>
+
+      <AdBanner />
 
       <nav className="bottom-nav">
         <button
