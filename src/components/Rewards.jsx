@@ -1,97 +1,14 @@
+
 import { useState } from "react";
-import RewardCard from "./RewardCard";
-
-import {
-  enterReward
-} from "../utils/api";
-
-import {
-  saveAccount
-} from "../utils/storage";
 
 export default function Rewards({
-  account,
-  updateAccount
+  account
 }) {
-  const [message, setMessage] =
-    useState("");
-
-  const [loading, setLoading] =
-    useState(false);
-
-  const rewards = [
-    {
-      id: "reward-10",
-      title: "$10 Sponsored Reward",
-      description:
-        "Use points to enter this sponsored reward draw.",
-      cost: 10
-    },
-
-    {
-      id: "reward-100",
-      title: "$100 Sponsored Reward",
-      description:
-        "Use points to enter this larger sponsored reward draw.",
-      cost: 50
-    }
-  ];
-
-  async function selectReward(reward) {
-    if (!account?.walkingId) {
-      setMessage(
-        "Your Walking Account is not available."
-      );
-      return;
-    }
-
-    if (
-      Number(account.points || 0) <
-      reward.cost
-    ) {
-      setMessage(
-        "You need " +
-        reward.cost +
-        " points."
-      );
-      return;
-    }
-
-    setLoading(true);
-    setMessage("");
-
-    try {
-      const result =
-        await enterReward(
-          account.walkingId,
-          reward.id
-        );
-
-      saveAccount(
-        result.account
-      );
-
-      updateAccount(
-        result.account
-      );
-
-      setMessage(
-        "Entry created successfully. You used " +
-        reward.cost +
-        " points."
-      );
-    } catch (error) {
-      setMessage(
-        error.message ||
-        "Could not create entry."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [message] = useState("");
 
   return (
     <div className="page">
+
       <section className="card">
         <p className="small-label">
           AVAILABLE POINTS
@@ -112,21 +29,18 @@ export default function Rewards({
         </div>
       )}
 
-      {rewards.map(
-        (reward) => (
-          <RewardCard
-            key={reward.id}
-            reward={reward}
-            onSelect={
-              selectReward
-            }
-            availablePoints={
-              account?.points || 0
-            }
-            loading={loading}
-          />
-        )
-      )}
+      <section className="card">
+        <h2>
+          No rewards available yet
+        </h2>
+
+        <p className="muted">
+          New rewards will appear here when
+          they are created by the administrator.
+          Check back later for cash prizes,
+          gift cards and other rewards.
+        </p>
+      </section>
 
       <section className="card">
         <h2>
@@ -134,11 +48,18 @@ export default function Rewards({
         </h2>
 
         <p className="muted">
-          Points are earned through verified
-          walking milestones. Reward entries
-          are recorded server-side.
+          Earn points through verified walking.
+          Your points balance is saved to your
+          Walking Rewards account.
+        </p>
+
+        <p className="muted">
+          Reward entry costs and eligibility
+          requirements will be displayed when
+          an administrator publishes a reward.
         </p>
       </section>
+
     </div>
   );
 }
