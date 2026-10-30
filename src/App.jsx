@@ -5,7 +5,39 @@ import Walk from "./components/Walk";
 import Rewards from "./components/Rewards";
 import Account from "./components/Account";
 import AdBanner from "./components/AdBanner";
+
 import { getAccount } from "./utils/storage";
+
+const SMARTLINK =
+  "https://araplhn.org/4/18626d8b0e3ef5c5fe42dacc09b3cef8";
+
+function SponsorLink() {
+  return (
+    <div style={{
+      textAlign: "center",
+      padding: "12px",
+      margin: "12px auto",
+    }}>
+      <a
+        href={SMARTLINK}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: "inline-block",
+          padding: "11px 20px",
+          borderRadius: "8px",
+          background: "#2563eb",
+          color: "#ffffff",
+          textDecoration: "none",
+          fontWeight: "600",
+          fontSize: "14px",
+        }}
+      >
+        Visit today's sponsor (optional)
+      </a>
+    </div>
+  );
+}
 
 export default function App() {
   const [page, setPage] = useState("account");
@@ -44,6 +76,7 @@ export default function App() {
           />
         </main>
 
+        <SponsorLink />
         <AdBanner />
       </div>
     );
@@ -95,6 +128,7 @@ export default function App() {
         )}
       </main>
 
+      <SponsorLink />
       <AdBanner />
 
       <nav className="bottom-nav">
