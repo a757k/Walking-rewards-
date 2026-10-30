@@ -4,8 +4,6 @@ import crypto from "node:crypto";
 
 const ADMIN_WALKING_ID = "WR-FB2EDP6K";
 
-const POINTS_PER_KILOMETRE = 1;
-
 const MAX_WALKING_SPEED_KMH = 12;
 const MIN_ACCURACY_METERS = 60;
 const MAX_POINT_DISTANCE_METERS = 150;
@@ -33,6 +31,11 @@ export default async function handler(req) {
 
     const rewards = getStore({
       name: "walking-rewards",
+      consistency: "strong"
+    });
+
+    const privateEmails = getStore({
+      name: "walking-private-emails",
       consistency: "strong"
     });
 
@@ -112,9 +115,7 @@ export default async function handler(req) {
 }
 
 
-/* =========================
-   ADMIN SECURITY
-========================= */
+/* ADMIN SECURITY */
 
 async function requireAdmin(body, accounts) {
   const suppliedId = normalizeWalkingId(body.adminWalkingId);
@@ -132,9 +133,7 @@ async function requireAdmin(body, accounts) {
 }
 
 
-/* =========================
-   ACCOUNT CREATION
-========================= */
+/* ACCOUNT CREATION */
 
 async function createAccount(body, accounts) {
   let walkingId;
@@ -142,11 +141,7 @@ async function createAccount(body, accounts) {
 
   do {
     walkingId = generateWalkingId();
-
-    existingAccount = await accounts.get(
-      `account/${walkingId}`,
-      { type: "json" }
-    );
+    existingAccount = await getAccount(accounts, walkingId);
   } while (existingAccount);
 
   const now = new Date().toISOString();
@@ -162,27 +157,18 @@ async function createAccount(body, accounts) {
     updatedAt: now
   };
 
-  await accounts.setJSON(
-    `account/${walkingId}`,
-    account
-  );
+  await accounts.setJSON(`account/${walkingId}`, account);
 
   return json({ success: true, account });
 }
 
 
 async function transferAccount(body, accounts) {
-  const walkingId =
-    normalizeWalkingId(body.walkingId);
-
-  const transferPin =
-    String(body.transferPin || "").trim();
+  const walkingId = normalizeWalkingId(body.walkingId);
+  const transferPin = String(body.transferPin || "").trim();
 
   if (!walkingId || !transferPin) {
-    return json(
-      { error: "Walking ID and PIN are required." },
-      400
-    );
+    return json({ error: "Walking ID and PIN are required." }, 400);
   }
 
   const account = await getAccount(accounts, walkingId);
@@ -199,14 +185,10 @@ async function transferAccount(body, accounts) {
 }
 
 
-/* =========================
-   WALK SESSION
-========================= */
+/* WALK SESSION */
 
 async function startWalk(body, accounts, walks, mode) {
-  const walkingId =
-    normalizeWalkingId(body.walkingId);
-
+  const walkingId = normalizeWalkingId(body.walkingId);
   const account = await getAccount(accounts, walkingId);
 
   if (!account) {
@@ -238,14 +220,10 @@ async function startWalk(body, accounts, walks, mode) {
 }
 
 
-/* =========================
-   OUTDOOR GPS
-========================= */
+/* OUTDOOR GPS */
 
 async function addPosition(body, accounts, walks) {
-  const walkingId =
-    normalizeWalkingId(body.walkingId);
-
+  const walkingId = normalizeWalkingId(body.walkingId);
   const sessionId = String(body.sessionId || "");
   const position = body.position;
 
@@ -270,10 +248,7 @@ async function addPosition(body, accounts, walks) {
   }
 
   if (session.mode === "treadmill") {
-    return json(
-      { error: "GPS is not allowed in a treadmill session." },
-      400
-    );
+    return json({ error: "GPS is not allowed in a treadmill session." }, 400);
   }
 
   const latitude = Number(position.latitude);
@@ -309,15 +284,8 @@ async function addPosition(body, accounts, walks) {
     });
   }
 
-  const newPoint = {
-    latitude,
-    longitude,
-    accuracy,
-    timestamp
-  };
-
-  const previous =
-    session.points[session.points.length - 1];
+  const newPoint = { latitude, longitude, accuracy, timestamp };
+  const previous = session.points[session.points.length - 1];
 
   if (!previous) {
     session.points.push(newPoint);
@@ -330,8 +298,7 @@ async function addPosition(body, accounts, walks) {
     });
   }
 
-  const elapsedSeconds =
-    (timestamp - previous.timestamp) / 1000;
+  const elapsedSeconds = (timestamp - previous.timestamp) / 1000;
 
   if (
     !Number.isFinite(elapsedSeconds) ||
@@ -355,8 +322,7 @@ async function addPosition(body, accounts, walks) {
     longitude
   );
 
-  const speedKmh =
-    (meters / elapsedSeconds) * 3.6;
+  const speedKmh = (meters / elapsedSeconds) * 3.6;
 
   if (
     speedKmh > MAX_WALKING_SPEED_KMH ||
@@ -393,14 +359,10 @@ async function addPosition(body, accounts, walks) {
 }
 
 
-/* =========================
-   TREADMILL STEPS
-========================= */
+/* TREADMILL STEPS */
 
 async function addTreadmillSteps(body, accounts, walks) {
-  const walkingId =
-    normalizeWalkingId(body.walkingId);
-
+  const walkingId = normalizeWalkingId(body.walkingId);
   const sessionId = String(body.sessionId || "");
   const reportedSteps = Number(body.steps);
 
@@ -460,7 +422,6 @@ async function addTreadmillSteps(body, accounts, walks) {
   }
 
   const now = Date.now();
-
   const lastUpdate = new Date(
     session.lastStepUpdateAt || session.startedAt
   ).getTime();
@@ -477,8 +438,7 @@ async function addTreadmillSteps(body, accounts, walks) {
     });
   }
 
-  const stepsPerMinute =
-    (additionalSteps / elapsedSeconds) * 60;
+  const stepsPerMinute = (additionalSteps / elapsedSeconds) * 60;
 
   if (stepsPerMinute > MAX_STEPS_PER_MINUTE) {
     session.rejectedStepBatches += 1;
@@ -493,8 +453,7 @@ async function addTreadmillSteps(body, accounts, walks) {
     });
   }
 
-  const addedDistanceKm =
-    (additionalSteps * METRES_PER_STEP) / 1000;
+  const addedDistanceKm = (additionalSteps * METRES_PER_STEP) / 1000;
 
   session.totalSteps = reportedSteps;
   session.distanceKm += addedDistanceKm;
@@ -513,14 +472,10 @@ async function addTreadmillSteps(body, accounts, walks) {
 }
 
 
-/* =========================
-   FINISH WALK
-========================= */
+/* FINISH WALK */
 
 async function finishWalk(body, accounts, walks) {
-  const walkingId =
-    normalizeWalkingId(body.walkingId);
-
+  const walkingId = normalizeWalkingId(body.walkingId);
   const sessionId = String(body.sessionId || "");
 
   const account = await getAccount(accounts, walkingId);
@@ -546,26 +501,17 @@ async function finishWalk(body, accounts, walks) {
   const sessionDistance = Number(session.distanceKm || 0);
   const newDistance = oldDistance + sessionDistance;
 
-  const oldMilestones = Math.floor(oldDistance / 1);
-  const newMilestones = Math.floor(newDistance / 1);
+  const oldMilestones = Math.floor(oldDistance);
+  const newMilestones = Math.floor(newDistance);
 
-  const earnedPoints = Math.max(
-    0,
-    newMilestones - oldMilestones
-  );
+  const earnedPoints = Math.max(0, newMilestones - oldMilestones);
 
   account.totalDistance = newDistance;
-
   account.lifetimeDistance =
-    Number(account.lifetimeDistance || 0) +
-    sessionDistance;
-
+    Number(account.lifetimeDistance || 0) + sessionDistance;
   account.completedWalks =
     Number(account.completedWalks || 0) + 1;
-
-  account.points =
-    Number(account.points || 0) + earnedPoints;
-
+  account.points = Number(account.points || 0) + earnedPoints;
   account.updatedAt = new Date().toISOString();
 
   await accounts.setJSON(`account/${walkingId}`, account);
@@ -581,9 +527,7 @@ async function finishWalk(body, accounts, walks) {
 }
 
 
-/* =========================
-   PUBLIC REWARDS
-========================= */
+/* PUBLIC REWARDS */
 
 async function listRewards(rewards, accounts) {
   const allRewards = await getAllRewards(rewards);
@@ -611,17 +555,12 @@ async function listRewards(rewards, accounts) {
       status: reward.status
     }));
 
-  return json({
-    success: true,
-    rewards: publicRewards
-  });
+  return json({ success: true, rewards: publicRewards });
 }
 
 
 async function enterReward(body, accounts, rewards) {
-  const walkingId =
-    normalizeWalkingId(body.walkingId);
-
+  const walkingId = normalizeWalkingId(body.walkingId);
   const rewardId = String(body.rewardId || "");
 
   if (!walkingId || !rewardId) {
@@ -634,10 +573,7 @@ async function enterReward(body, accounts, rewards) {
     return json({ error: "Walking account not found." }, 404);
   }
 
-  const reward = await rewards.get(
-    `reward/${rewardId}`,
-    { type: "json" }
-  );
+  const reward = await rewards.get(`reward/${rewardId}`, { type: "json" });
 
   if (!reward) {
     return json({ error: "Reward not found." }, 404);
@@ -651,22 +587,19 @@ async function enterReward(body, accounts, rewards) {
   );
 
   if (!refreshedReward || refreshedReward.status !== "active") {
-    return json({ error: "This reward is no longer accepting entries." }, 400);
+    return json({
+      error: "This reward is no longer accepting entries."
+    }, 400);
   }
 
   const cost = Number(refreshedReward.entryCost || 0);
 
-  if (Number(account.points || 0) < cost) {
-    return json({ error: "You do not have enough points." }, 400);
+  if (!Number.isSafeInteger(cost) || cost < 0) {
+    return json({ error: "Invalid reward entry cost." }, 400);
   }
 
-  const alreadyEntered =
-    (refreshedReward.entries || []).some(
-      entry => entry.walkingId === walkingId
-    );
-
-  if (alreadyEntered) {
-    return json({ error: "You have already entered this reward." }, 400);
+  if (Number(account.points || 0) < cost) {
+    return json({ error: "You do not have enough points." }, 400);
   }
 
   const entry = {
@@ -675,35 +608,20 @@ async function enterReward(body, accounts, rewards) {
     createdAt: new Date().toISOString()
   };
 
-  refreshedReward.entries =
-    refreshedReward.entries || [];
-
+  refreshedReward.entries = refreshedReward.entries || [];
   refreshedReward.entries.push(entry);
 
   account.points = Number(account.points || 0) - cost;
   account.updatedAt = new Date().toISOString();
 
-  await rewards.setJSON(
-    `reward/${rewardId}`,
-    refreshedReward
-  );
+  await rewards.setJSON(`reward/${rewardId}`, refreshedReward);
+  await accounts.setJSON(`account/${walkingId}`, account);
 
-  await accounts.setJSON(
-    `account/${walkingId}`,
-    account
-  );
-
-  return json({
-    success: true,
-    entry,
-    account
-  });
+  return json({ success: true, entry, account });
 }
 
 
-/* =========================
-   ADMIN: LIST REWARDS
-========================= */
+/* ADMIN: LIST REWARDS */
 
 async function adminListRewards(rewards, accounts) {
   const allRewards = await getAllRewards(rewards);
@@ -714,16 +632,11 @@ async function adminListRewards(rewards, accounts) {
 
   const refreshed = await getAllRewards(rewards);
 
-  return json({
-    success: true,
-    rewards: refreshed
-  });
+  return json({ success: true, rewards: refreshed });
 }
 
 
-/* =========================
-   ADMIN: CREATE REWARD
-========================= */
+/* ADMIN: CREATE REWARD */
 
 async function adminCreateReward(body, rewards) {
   const title = String(body.title || "").trim();
@@ -734,13 +647,7 @@ async function adminCreateReward(body, rewards) {
   const eligibility = String(body.eligibility || "").trim();
   const image = String(body.image || "").trim();
 
-  const allowedTypes = [
-    "cash",
-    "gift-card",
-    "voucher",
-    "physical",
-    "other"
-  ];
+  const allowedTypes = ["cash", "gift-card", "voucher", "physical", "other"];
 
   if (!title || !description || !expiresAt || !allowedTypes.includes(type)) {
     return json({ error: "Complete the reward details correctly." }, 400);
@@ -757,7 +664,7 @@ async function adminCreateReward(body, rewards) {
 
   if (
     !Number.isSafeInteger(entryCost) ||
-    entryCost < 0 ||
+    entryCost < 1 ||
     !Number.isSafeInteger(winnersCount) ||
     winnersCount < 1 ||
     winnersCount > 20
@@ -785,26 +692,18 @@ async function adminCreateReward(body, rewards) {
     updatedAt: new Date().toISOString()
   };
 
-  await rewards.setJSON(
-    `reward/${rewardId}`,
-    reward
-  );
+  await rewards.setJSON(`reward/${rewardId}`, reward);
 
   return json({ success: true, reward });
 }
 
 
-/* =========================
-   ADMIN: UPDATE REWARD
-========================= */
+/* ADMIN: UPDATE REWARD */
 
 async function adminUpdateReward(body, rewards) {
   const rewardId = String(body.rewardId || "");
 
-  const reward = await rewards.get(
-    `reward/${rewardId}`,
-    { type: "json" }
-  );
+  const reward = await rewards.get(`reward/${rewardId}`, { type: "json" });
 
   if (!reward) {
     return json({ error: "Reward not found." }, 404);
@@ -826,15 +725,33 @@ async function adminUpdateReward(body, rewards) {
     "description",
     "prizeValue",
     "eligibility",
-    "image",
-    "entryCost",
-    "winnersCount"
+    "image"
   ];
 
   for (const field of editableFields) {
     if (body[field] !== undefined) {
-      reward[field] = body[field];
+      reward[field] = String(body[field]).trim();
     }
+  }
+
+  if (body.entryCost !== undefined) {
+    const cost = Number(body.entryCost);
+
+    if (!Number.isSafeInteger(cost) || cost < 1) {
+      return json({ error: "Invalid entry cost." }, 400);
+    }
+
+    reward.entryCost = cost;
+  }
+
+  if (body.winnersCount !== undefined) {
+    const count = Number(body.winnersCount);
+
+    if (!Number.isSafeInteger(count) || count < 1 || count > 20) {
+      return json({ error: "Invalid winner count." }, 400);
+    }
+
+    reward.winnersCount = count;
   }
 
   if (body.expiresAt !== undefined) {
@@ -855,17 +772,12 @@ async function adminUpdateReward(body, rewards) {
 }
 
 
-/* =========================
-   ADMIN: DELETE REWARD
-========================= */
+/* ADMIN: DELETE REWARD */
 
 async function adminDeleteReward(body, rewards) {
   const rewardId = String(body.rewardId || "");
 
-  const reward = await rewards.get(
-    `reward/${rewardId}`,
-    { type: "json" }
-  );
+  const reward = await rewards.get(`reward/${rewardId}`, { type: "json" });
 
   if (!reward) {
     return json({ error: "Reward not found." }, 404);
@@ -883,9 +795,7 @@ async function adminDeleteReward(body, rewards) {
 }
 
 
-/* =========================
-   RANDOM DRAW
-========================= */
+/* RANDOM DRAW */
 
 async function drawIfExpired(reward, rewards, accounts) {
   if (
@@ -902,11 +812,7 @@ async function drawIfExpired(reward, rewards, accounts) {
     reward.status = "expired-no-entries";
     reward.drawnAt = new Date().toISOString();
 
-    await rewards.setJSON(
-      `reward/${reward.rewardId}`,
-      reward
-    );
-
+    await rewards.setJSON(`reward/${reward.rewardId}`, reward);
     return;
   }
 
@@ -923,18 +829,24 @@ async function drawIfExpired(reward, rewards, accounts) {
   );
 
   const selected = shuffled.slice(0, winnerCount);
+
+  const privateEmails = getStore({
+    name: "walking-private-emails",
+    consistency: "strong"
+  });
+
   const winners = [];
 
   for (const selectedEntry of selected) {
-    const account = await getAccount(
-      accounts,
-      selectedEntry.walkingId
+    const emailRecord = await privateEmails.get(
+      `email/${selectedEntry.walkingId}`,
+      { type: "json" }
     );
 
     winners.push({
       walkingId: selectedEntry.walkingId,
-      email: account?.email || "",
-      paypalEmail: account?.paypalEmail || "",
+      email: emailRecord?.email || "",
+      paypalEmail: emailRecord?.paypalEmail || "",
       status: "pending-approval",
       approvedAt: null,
       sentAt: null,
@@ -946,25 +858,17 @@ async function drawIfExpired(reward, rewards, accounts) {
   reward.status = "draw-completed";
   reward.drawnAt = new Date().toISOString();
 
-  await rewards.setJSON(
-    `reward/${reward.rewardId}`,
-    reward
-  );
+  await rewards.setJSON(`reward/${reward.rewardId}`, reward);
 }
 
 
-/* =========================
-   ADMIN: APPROVE WINNER
-========================= */
+/* ADMIN: APPROVE WINNER */
 
 async function adminApproveAward(body, rewards) {
   const rewardId = String(body.rewardId || "");
   const walkingId = normalizeWalkingId(body.walkingId);
 
-  const reward = await rewards.get(
-    `reward/${rewardId}`,
-    { type: "json" }
-  );
+  const reward = await rewards.get(`reward/${rewardId}`, { type: "json" });
 
   if (!reward) {
     return json({ error: "Reward not found." }, 404);
@@ -985,28 +889,20 @@ async function adminApproveAward(body, rewards) {
   winner.status = "approved";
   winner.approvedAt = new Date().toISOString();
 
-  await rewards.setJSON(
-    `reward/${rewardId}`,
-    reward
-  );
+  await rewards.setJSON(`reward/${rewardId}`, reward);
 
   return json({ success: true, reward });
 }
 
 
-/* =========================
-   ADMIN: MARK AWARD SENT
-========================= */
+/* ADMIN: MARK AWARD SENT */
 
 async function adminMarkAwardSent(body, rewards) {
   const rewardId = String(body.rewardId || "");
   const walkingId = normalizeWalkingId(body.walkingId);
   const reference = String(body.paymentReference || "").trim();
 
-  const reward = await rewards.get(
-    `reward/${rewardId}`,
-    { type: "json" }
-  );
+  const reward = await rewards.get(`reward/${rewardId}`, { type: "json" });
 
   if (!reward) {
     return json({ error: "Reward not found." }, 404);
@@ -1028,38 +924,24 @@ async function adminMarkAwardSent(body, rewards) {
   winner.sentAt = new Date().toISOString();
   winner.paymentReference = reference;
 
-  if (
-    reward.winners.every(item => item.status === "sent")
-  ) {
+  if (reward.winners.every(item => item.status === "sent")) {
     reward.status = "completed";
   }
 
-  await rewards.setJSON(
-    `reward/${rewardId}`,
-    reward
-  );
+  await rewards.setJSON(`reward/${rewardId}`, reward);
 
   return json({ success: true, reward });
 }
 
 
-/* =========================
-   STORAGE HELPERS
-========================= */
+/* STORAGE HELPERS */
 
 async function getAllRewards(rewards) {
-  const result = await rewards.list({
-    prefix: "reward/"
-  });
-
+  const result = await rewards.list({ prefix: "reward/" });
   const items = [];
 
   for (const blob of result.blobs || []) {
-    const reward = await rewards.get(
-      blob.key,
-      { type: "json" }
-    );
-
+    const reward = await rewards.get(blob.key, { type: "json" });
     if (reward) items.push(reward);
   }
 
@@ -1070,52 +952,35 @@ async function getAllRewards(rewards) {
 async function getAccount(accounts, walkingId) {
   if (!walkingId) return null;
 
-  return await accounts.get(
-    `account/${walkingId}`,
-    { type: "json" }
-  );
+  return await accounts.get(`account/${walkingId}`, { type: "json" });
 }
 
 
 async function getSession(walks, sessionId) {
   if (!sessionId) return null;
 
-  return await walks.get(
-    `session/${sessionId}`,
-    { type: "json" }
-  );
+  return await walks.get(`session/${sessionId}`, { type: "json" });
 }
 
 
 async function saveSession(walks, session) {
-  await walks.setJSON(
-    `session/${session.sessionId}`,
-    session
-  );
+  await walks.setJSON(`session/${session.sessionId}`, session);
 }
 
 
-/* =========================
-   GENERAL HELPERS
-========================= */
+/* GENERAL HELPERS */
 
 function normalizeWalkingId(value) {
-  return String(value || "")
-    .trim()
-    .toUpperCase();
+  return String(value || "").trim().toUpperCase();
 }
 
 
 function generateWalkingId() {
-  const alphabet =
-    "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let result = "WR-";
 
   for (let i = 0; i < 8; i++) {
-    result += alphabet[
-      crypto.randomInt(0, alphabet.length)
-    ];
+    result += alphabet[crypto.randomInt(0, alphabet.length)];
   }
 
   return result;
@@ -1123,9 +988,7 @@ function generateWalkingId() {
 
 
 function generateTransferPin() {
-  return String(
-    crypto.randomInt(100000, 1000000)
-  );
+  return String(crypto.randomInt(100000, 1000000));
 }
 
 
@@ -1141,26 +1004,16 @@ function haversineMeters(lat1, lon1, lat2, lon2) {
     Math.cos(lat2 * Math.PI / 180) *
     Math.sin(dLon / 2) ** 2;
 
-  return (
-    R *
-    2 *
-    Math.atan2(
-      Math.sqrt(a),
-      Math.sqrt(1 - a)
-    )
-  );
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
 
 function json(data, status = 200) {
-  return new Response(
-    JSON.stringify(data),
-    {
-      status,
-      headers: {
-        "Content-Type": "application/json",
-        "Cache-Control": "no-store"
-      }
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store"
     }
-  );
+  });
 }
