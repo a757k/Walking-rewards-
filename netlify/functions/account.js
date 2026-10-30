@@ -1,33 +1,43 @@
-
 import { getStore } from "@netlify/blobs";
 import crypto from "node:crypto";
 
+/* =========================
+   WALKING SETTINGS
+========================= */
+
+// Outdoor GPS checks
 const MAX_WALKING_SPEED_KMH = 12;
 const MIN_ACCURACY_METERS = 60;
 const MAX_POINT_DISTANCE_METERS = 150;
 const MIN_POSITION_INTERVAL_SECONDS = 2;
+
+// Treadmill checks
+const METRES_PER_STEP = 0.75;
+const MAX_STEPS_PER_MINUTE = 220;
+const MAX_TREADMILL_BATCH_STEPS = 500;
+
+// Rewards
+const POINTS_PER_KILOMETRE = 1;
 
 const REWARD_COSTS = {
   "reward-10": 10,
   "reward-100": 50
 };
 
+
+/* =========================
+   MAIN HANDLER
+========================= */
+
 export default async function handler(req) {
   if (req.method !== "POST") {
     return json(
-      {
-        error: "Method not allowed."
-      },
+      { error: "Method not allowed." },
       405
     );
   }
 
   try {
-    /*
-     * IMPORTANT:
-     * Netlify Blobs must be initialized inside the function
-     * request when using automatic Netlify configuration.
-     */
     const accounts = getStore({
       name: "walking-accounts",
       consistency: "strong"
@@ -52,16 +62,47 @@ export default async function handler(req) {
 
       case "transfer":
       case "transferAccount":
-        return await transferAccount(body, accounts);
+        return await transferAccount(
+          body,
+          accounts
+        );
 
       case "startWalk":
-        return await startWalk(body, accounts, walks);
+        return await startWalk(
+          body,
+          accounts,
+          walks,
+          "outdoor"
+        );
+
+      case "startTreadmill":
+        return await startWalk(
+          body,
+          accounts,
+          walks,
+          "treadmill"
+        );
 
       case "position":
-        return await addPosition(body, accounts, walks);
+        return await addPosition(
+          body,
+          accounts,
+          walks
+        );
+
+      case "treadmillSteps":
+        return await addTreadmillSteps(
+          body,
+          accounts,
+          walks
+        );
 
       case "finishWalk":
-        return await finishWalk(body, accounts, walks);
+        return await finishWalk(
+          body,
+          accounts,
+          walks
+        );
 
       case "reward":
         return await createRewardEntry(
@@ -71,15 +112,9 @@ export default async function handler(req) {
         );
 
       default:
-        console.error(
-          "Unknown action received:",
-          body.action
-        );
-
         return json(
           {
-            error: "Unknown action.",
-            receivedAction: body.action || null
+            error: "Unknown action."
           },
           400
         );
@@ -92,7 +127,8 @@ export default async function handler(req) {
 
     return json(
       {
-        error: "Server error. Please try again."
+        error:
+          "Server error. Please try again."
       },
       500
     );
@@ -101,7 +137,7 @@ export default async function handler(req) {
 
 
 /* =========================
-   ACCOUNT
+   ACCOUNT CREATION
 ========================= */
 
 async function createAccount(accounts) {
@@ -113,14 +149,14 @@ async function createAccount(accounts) {
 
     existingAccount = await accounts.get(
       `account/${walkingId}`,
-      {
-        type: "json"
-      }
+      { type: "json" }
     );
   } while (existingAccount);
 
   const transferPin =
     generateTransferPin();
+
+  const now = new Date().toISOString();
 
   const account = {
     walkingId,
@@ -129,8 +165,8 @@ async function createAccount(accounts) {
     totalDistance: 0,
     lifetimeDistance: 0,
     completedWalks: 0,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    createdAt: now,
+    updatedAt: now
   };
 
   await accounts.setJSON(
@@ -138,24 +174,23 @@ async function createAccount(accounts) {
     account
   );
 
-  return json(
-    {
-      success: true,
-      account
-    },
-    200
-  );
+  return json({
+    success: true,
+    account
+  });
 }
 
+
+/* =========================
+   ACCOUNT TRANSFER
+========================= */
 
 async function transferAccount(
   body,
   accounts
 ) {
   const walkingId =
-    normalizeWalkingId(
-      body.walkingId
-    );
+    normalizeWalkingId(body.walkingId);
 
   const transferPin = String(
     body.transferPin || ""
@@ -171,11 +206,10 @@ async function transferAccount(
     );
   }
 
-  const account =
-    await getAccount(
-      accounts,
-      walkingId
-    );
+  const account = await getAccount(
+    accounts,
+    walkingId
+  );
 
   if (!account) {
     return json(
@@ -187,48 +221,48 @@ async function transferAccount(
     );
   }
 
-  if (
-    account.transferPin !==
-    transferPin
-  ) {
+  if (account.transferPin !== transferPin) {
     return json(
       {
-        error:
-          "Invalid transfer PIN."
+        error: "Invalid transfer PIN."
       },
       401
     );
   }
 
-  return json(
-    {
-      success: true,
-      account
-    },
-    200
-  );
+  return json({
+    success: true,
+    account
+  });
 }
 
 
 /* =========================
-   WALK START
+   START WALK SESSION
 ========================= */
 
 async function startWalk(
   body,
   accounts,
-  walks
+  walks,
+  mode
 ) {
   const walkingId =
-    normalizeWalkingId(
-      body.walkingId
-    );
+    normalizeWalkingId(body.walkingId);
 
-  const account =
-    await getAccount(
-      accounts,
-      walkingId
+  if (!walkingId) {
+    return json(
+      {
+        error: "Walking ID is required."
+      },
+      400
     );
+  }
+
+  const account = await getAccount(
+    accounts,
+    walkingId
+  );
 
   if (!account) {
     return json(
@@ -243,15 +277,27 @@ async function startWalk(
   const sessionId =
     crypto.randomUUID();
 
+  const now = new Date().toISOString();
+
   const session = {
     sessionId,
     walkingId,
-    startedAt:
-      new Date().toISOString(),
+    mode,
+    startedAt: now,
     finishedAt: null,
+
     distanceKm: 0,
+
+    // Outdoor GPS data
     points: [],
     rejectedPoints: 0,
+
+    // Treadmill data
+    totalSteps: 0,
+    lastStepUpdateAt: now,
+    stepBatches: 0,
+    rejectedStepBatches: 0,
+
     finished: false
   };
 
@@ -260,18 +306,16 @@ async function startWalk(
     session
   );
 
-  return json(
-    {
-      success: true,
-      sessionId
-    },
-    200
-  );
+  return json({
+    success: true,
+    sessionId,
+    mode
+  });
 }
 
 
 /* =========================
-   GPS POSITION
+   OUTDOOR GPS TRACKING
 ========================= */
 
 async function addPosition(
@@ -280,16 +324,13 @@ async function addPosition(
   walks
 ) {
   const walkingId =
-    normalizeWalkingId(
-      body.walkingId
-    );
+    normalizeWalkingId(body.walkingId);
 
   const sessionId = String(
     body.sessionId || ""
   );
 
-  const position =
-    body.position;
+  const position = body.position;
 
   if (
     !walkingId ||
@@ -298,18 +339,16 @@ async function addPosition(
   ) {
     return json(
       {
-        error:
-          "Missing walking data."
+        error: "Missing walking data."
       },
       400
     );
   }
 
-  const account =
-    await getAccount(
-      accounts,
-      walkingId
-    );
+  const account = await getAccount(
+    accounts,
+    walkingId
+  );
 
   if (!account) {
     return json(
@@ -321,32 +360,24 @@ async function addPosition(
     );
   }
 
-  const session =
-    await walks.get(
-      `session/${sessionId}`,
-      {
-        type: "json"
-      }
-    );
+  const session = await getSession(
+    walks,
+    sessionId
+  );
 
   if (!session) {
     return json(
       {
-        error:
-          "Walk session not found."
+        error: "Walk session not found."
       },
       404
     );
   }
 
-  if (
-    session.walkingId !==
-    walkingId
-  ) {
+  if (session.walkingId !== walkingId) {
     return json(
       {
-        error:
-          "Invalid walking session."
+        error: "Invalid walking session."
       },
       403
     );
@@ -357,6 +388,17 @@ async function addPosition(
       {
         error:
           "This walk has already finished."
+      },
+      400
+    );
+  }
+
+  // Never allow GPS distance in a treadmill session.
+  if (session.mode === "treadmill") {
+    return json(
+      {
+        error:
+          "GPS tracking is not allowed in a treadmill session."
       },
       400
     );
@@ -381,8 +423,7 @@ async function addPosition(
   ) {
     return json(
       {
-        error:
-          "Invalid GPS data."
+        error: "Invalid GPS data."
       },
       400
     );
@@ -396,29 +437,30 @@ async function addPosition(
   ) {
     return json(
       {
-        error:
-          "Invalid GPS coordinates."
+        error: "Invalid GPS coordinates."
       },
       400
     );
   }
 
   if (
-    Number.isFinite(accuracy) &&
-    accuracy >
-      MIN_ACCURACY_METERS
+    !Number.isFinite(accuracy) ||
+    accuracy > MIN_ACCURACY_METERS ||
+    accuracy < 0
   ) {
-    return json(
-      {
-        success: true,
-        distanceKm:
-          session.distanceKm,
-        rejected: true,
-        reason:
-          "GPS accuracy is too weak."
-      },
-      200
+    session.rejectedPoints += 1;
+
+    await walks.setJSON(
+      `session/${sessionId}`,
+      session
     );
+
+    return json({
+      success: true,
+      distanceKm: session.distanceKm,
+      rejected: true,
+      reason: "GPS accuracy is too weak."
+    });
   }
 
   const newPoint = {
@@ -434,68 +476,26 @@ async function addPosition(
     ];
 
   if (!previous) {
-    session.points.push(
-      newPoint
-    );
+    session.points.push(newPoint);
 
     await walks.setJSON(
       `session/${sessionId}`,
       session
     );
 
-    return json(
-      {
-        success: true,
-        distanceKm:
-          session.distanceKm,
-        rejected: false
-      },
-      200
-    );
+    return json({
+      success: true,
+      distanceKm: session.distanceKm,
+      rejected: false
+    });
   }
 
   const elapsedSeconds =
-    Math.max(
-      0.1,
-      (timestamp -
-        previous.timestamp) /
-        1000
-    );
+    (timestamp - previous.timestamp) / 1000;
 
   if (
-    elapsedSeconds <
-    MIN_POSITION_INTERVAL_SECONDS
-  ) {
-    return json(
-      {
-        success: true,
-        distanceKm:
-          session.distanceKm,
-        rejected: true,
-        reason:
-          "GPS updates are arriving too quickly."
-      },
-      200
-    );
-  }
-
-  const meters =
-    haversineMeters(
-      previous.latitude,
-      previous.longitude,
-      latitude,
-      longitude
-    );
-
-  const speedKmh =
-    (meters / elapsedSeconds) *
-    3.6;
-
-  if (
-    speedKmh >
-      MAX_WALKING_SPEED_KMH ||
-    meters >
-      MAX_POINT_DISTANCE_METERS
+    !Number.isFinite(elapsedSeconds) ||
+    elapsedSeconds < MIN_POSITION_INTERVAL_SECONDS
   ) {
     session.rejectedPoints += 1;
 
@@ -504,55 +504,54 @@ async function addPosition(
       session
     );
 
-    return json(
-      {
-        success: true,
-        distanceKm:
-          session.distanceKm,
-        rejected: true,
-        reason:
-          "Movement was too fast or the GPS jump was too large."
-      },
-      200
-    );
+    return json({
+      success: true,
+      distanceKm: session.distanceKm,
+      rejected: true,
+      reason:
+        "GPS updates are arriving too quickly."
+    });
   }
 
-  if (meters < 3) {
-    session.points.push(
-      newPoint
-    );
+  const meters = haversineMeters(
+    previous.latitude,
+    previous.longitude,
+    latitude,
+    longitude
+  );
+
+  const speedKmh =
+    (meters / elapsedSeconds) * 3.6;
+
+  if (
+    speedKmh > MAX_WALKING_SPEED_KMH ||
+    meters > MAX_POINT_DISTANCE_METERS
+  ) {
+    session.rejectedPoints += 1;
 
     await walks.setJSON(
       `session/${sessionId}`,
       session
     );
 
-    return json(
-      {
-        success: true,
-        distanceKm:
-          session.distanceKm,
-        rejected: false
-      },
-      200
-    );
+    return json({
+      success: true,
+      distanceKm: session.distanceKm,
+      rejected: true,
+      reason:
+        "Movement was too fast or the GPS jump was too large."
+    });
   }
 
-  session.distanceKm +=
-    meters / 1000;
+  session.points.push(newPoint);
 
-  session.points.push(
-    newPoint
-  );
+  if (meters >= 3) {
+    session.distanceKm += meters / 1000;
+  }
 
-  if (
-    session.points.length >
-    2000
-  ) {
+  if (session.points.length > 2000) {
     session.points =
-      session.points.slice(
-        -1500
-      );
+      session.points.slice(-1500);
   }
 
   await walks.setJSON(
@@ -560,15 +559,220 @@ async function addPosition(
     session
   );
 
-  return json(
-    {
-      success: true,
-      distanceKm:
-        session.distanceKm,
-      rejected: false
-    },
-    200
+  return json({
+    success: true,
+    distanceKm: session.distanceKm,
+    rejected: false
+  });
+}
+
+
+/* =========================
+   TREADMILL STEP TRACKING
+========================= */
+
+async function addTreadmillSteps(
+  body,
+  accounts,
+  walks
+) {
+  const walkingId =
+    normalizeWalkingId(body.walkingId);
+
+  const sessionId = String(
+    body.sessionId || ""
   );
+
+  // This must be the cumulative step count
+  // since the treadmill session started.
+  const reportedSteps =
+    Number(body.steps);
+
+  if (
+    !walkingId ||
+    !sessionId ||
+    !Number.isSafeInteger(reportedSteps) ||
+    reportedSteps < 0
+  ) {
+    return json(
+      {
+        error: "Invalid treadmill step data."
+      },
+      400
+    );
+  }
+
+  const account = await getAccount(
+    accounts,
+    walkingId
+  );
+
+  if (!account) {
+    return json(
+      {
+        error: "Walking account not found."
+      },
+      404
+    );
+  }
+
+  const session = await getSession(
+    walks,
+    sessionId
+  );
+
+  if (!session) {
+    return json(
+      {
+        error: "Walk session not found."
+      },
+      404
+    );
+  }
+
+  if (session.walkingId !== walkingId) {
+    return json(
+      {
+        error: "Invalid walking session."
+      },
+      403
+    );
+  }
+
+  if (session.finished) {
+    return json(
+      {
+        error: "This walk has already finished."
+      },
+      400
+    );
+  }
+
+  // Do not mix treadmill and GPS tracking.
+  if (session.mode !== "treadmill") {
+    return json(
+      {
+        error:
+          "This is not a treadmill session."
+      },
+      400
+    );
+  }
+
+  const previousSteps =
+    Number(session.totalSteps || 0);
+
+  const additionalSteps =
+    reportedSteps - previousSteps;
+
+  // Reject duplicate, reset or replayed step counts.
+  if (additionalSteps <= 0) {
+    return json({
+      success: true,
+      accepted: false,
+      distanceKm: session.distanceKm,
+      totalSteps: previousSteps,
+      reason:
+        "Duplicate or outdated step update."
+    });
+  }
+
+  if (
+    additionalSteps >
+    MAX_TREADMILL_BATCH_STEPS
+  ) {
+    session.rejectedStepBatches += 1;
+
+    await walks.setJSON(
+      `session/${sessionId}`,
+      session
+    );
+
+    return json({
+      success: true,
+      accepted: false,
+      distanceKm: session.distanceKm,
+      totalSteps: previousSteps,
+      reason:
+        "Step update was too large."
+    });
+  }
+
+  // Use server time, not the phone's timestamp.
+  const now = Date.now();
+
+  const lastUpdate = new Date(
+    session.lastStepUpdateAt ||
+    session.startedAt
+  ).getTime();
+
+  const elapsedSeconds =
+    (now - lastUpdate) / 1000;
+
+  if (
+    !Number.isFinite(elapsedSeconds) ||
+    elapsedSeconds <= 0
+  ) {
+    return json({
+      success: true,
+      accepted: false,
+      distanceKm: session.distanceKm,
+      totalSteps: previousSteps,
+      reason:
+        "Invalid step update timing."
+    });
+  }
+
+  const stepsPerMinute =
+    (additionalSteps / elapsedSeconds) * 60;
+
+  if (
+    stepsPerMinute >
+    MAX_STEPS_PER_MINUTE
+  ) {
+    session.rejectedStepBatches += 1;
+
+    await walks.setJSON(
+      `session/${sessionId}`,
+      session
+    );
+
+    return json({
+      success: true,
+      accepted: false,
+      distanceKm: session.distanceKm,
+      totalSteps: previousSteps,
+      reason:
+        "Step rate was too high."
+    });
+  }
+
+  // Server calculates distance.
+  // The client cannot submit its own distance.
+  const addedDistanceKm =
+    (additionalSteps * METRES_PER_STEP) / 1000;
+
+  session.totalSteps = reportedSteps;
+
+  session.distanceKm += addedDistanceKm;
+
+  session.lastStepUpdateAt =
+    new Date(now).toISOString();
+
+  session.stepBatches += 1;
+
+  await walks.setJSON(
+    `session/${sessionId}`,
+    session
+  );
+
+  return json({
+    success: true,
+    accepted: true,
+    totalSteps: session.totalSteps,
+    distanceKm: session.distanceKm,
+    addedDistanceKm
+  });
 }
 
 
@@ -582,56 +786,53 @@ async function finishWalk(
   walks
 ) {
   const walkingId =
-    normalizeWalkingId(
-      body.walkingId
-    );
+    normalizeWalkingId(body.walkingId);
 
   const sessionId = String(
     body.sessionId || ""
   );
 
-  const account =
-    await getAccount(
-      accounts,
-      walkingId
+  if (!walkingId || !sessionId) {
+    return json(
+      {
+        error: "Missing walking data."
+      },
+      400
     );
+  }
+
+  const account = await getAccount(
+    accounts,
+    walkingId
+  );
 
   if (!account) {
     return json(
       {
-        error:
-          "Walking account not found."
+        error: "Walking account not found."
       },
       404
     );
   }
 
-  const session =
-    await walks.get(
-      `session/${sessionId}`,
-      {
-        type: "json"
-      }
-    );
+  const session = await getSession(
+    walks,
+    sessionId
+  );
 
   if (!session) {
     return json(
       {
-        error:
-          "Walk session not found."
+        error: "Walk session not found."
       },
       404
     );
   }
 
-  if (
-    session.walkingId !==
-    walkingId
-  ) {
+  if (session.walkingId !== walkingId) {
     return json(
       {
-        error:
-          "Invalid walking session."
+        error: "Invalid walking session."
       },
       403
     );
@@ -640,8 +841,7 @@ async function finishWalk(
   if (session.finished) {
     return json(
       {
-        error:
-          "Walk already finished."
+        error: "Walk already finished."
       },
       400
     );
@@ -653,50 +853,42 @@ async function finishWalk(
     new Date().toISOString();
 
   const oldDistance =
-    Number(
-      account.totalDistance || 0
-    );
+    Number(account.totalDistance || 0);
+
+  const sessionDistance =
+    Number(session.distanceKm || 0);
 
   const newDistance =
-    oldDistance +
-    Number(
-      session.distanceKm || 0
+    oldDistance + sessionDistance;
+
+  // Preserve 1 point per completed kilometre.
+  const oldMilestones =
+    Math.floor(
+      oldDistance / POINTS_PER_KILOMETRE
     );
 
-  // NEW RATE: 1 point for every completed kilometre.
-  const oldMilestones =
-    Math.floor(oldDistance / 1);
-
   const newMilestones =
-    Math.floor(newDistance / 1);
+    Math.floor(
+      newDistance / POINTS_PER_KILOMETRE
+    );
 
   const earnedPoints =
     Math.max(
       0,
-      newMilestones -
-        oldMilestones
+      newMilestones - oldMilestones
     );
 
-  account.totalDistance =
-    newDistance;
+  account.totalDistance = newDistance;
 
   account.lifetimeDistance =
-    Number(
-      account.lifetimeDistance || 0
-    ) +
-    Number(
-      session.distanceKm || 0
-    );
+    Number(account.lifetimeDistance || 0) +
+    sessionDistance;
 
   account.completedWalks =
-    Number(
-      account.completedWalks || 0
-    ) + 1;
+    Number(account.completedWalks || 0) + 1;
 
   account.points =
-    Number(
-      account.points || 0
-    ) +
+    Number(account.points || 0) +
     earnedPoints;
 
   account.updatedAt =
@@ -712,21 +904,18 @@ async function finishWalk(
     session
   );
 
-  return json(
-    {
-      success: true,
-      distanceKm:
-        session.distanceKm,
-      earnedPoints,
-      account
-    },
-    200
-  );
+  return json({
+    success: true,
+    mode: session.mode || "outdoor",
+    distanceKm: sessionDistance,
+    earnedPoints,
+    account
+  });
 }
 
 
 /* =========================
-   REWARDS
+   REWARD ENTRIES
 ========================= */
 
 async function createRewardEntry(
@@ -735,47 +924,39 @@ async function createRewardEntry(
   rewards
 ) {
   const walkingId =
-    normalizeWalkingId(
-      body.walkingId
-    );
+    normalizeWalkingId(body.walkingId);
 
-  const rewardId =
-    String(
-      body.rewardId || ""
-    );
+  const rewardId = String(
+    body.rewardId || ""
+  );
 
-  const cost =
-    REWARD_COSTS[rewardId];
+  const cost = REWARD_COSTS[rewardId];
 
   if (!cost) {
     return json(
       {
-        error:
-          "Invalid reward."
+        error: "Invalid reward."
       },
       400
     );
   }
 
-  const account =
-    await getAccount(
-      accounts,
-      walkingId
-    );
+  const account = await getAccount(
+    accounts,
+    walkingId
+  );
 
   if (!account) {
     return json(
       {
-        error:
-          "Walking account not found."
+        error: "Walking account not found."
       },
       404
     );
   }
 
   if (
-    Number(account.points || 0) <
-    cost
+    Number(account.points || 0) < cost
   ) {
     return json(
       {
@@ -799,8 +980,7 @@ async function createRewardEntry(
     walkingId,
     rewardId,
     cost,
-    createdAt:
-      new Date().toISOString(),
+    createdAt: new Date().toISOString(),
     status: "active"
   };
 
@@ -814,19 +994,16 @@ async function createRewardEntry(
     account
   );
 
-  return json(
-    {
-      success: true,
-      entry,
-      account
-    },
-    200
-  );
+  return json({
+    success: true,
+    entry,
+    account
+  });
 }
 
 
 /* =========================
-   HELPERS
+   DATABASE HELPERS
 ========================= */
 
 async function getAccount(
@@ -839,16 +1016,31 @@ async function getAccount(
 
   return await accounts.get(
     `account/${walkingId}`,
-    {
-      type: "json"
-    }
+    { type: "json" }
   );
 }
 
 
-function normalizeWalkingId(
-  value
+async function getSession(
+  walks,
+  sessionId
 ) {
+  if (!sessionId) {
+    return null;
+  }
+
+  return await walks.get(
+    `session/${sessionId}`,
+    { type: "json" }
+  );
+}
+
+
+/* =========================
+   GENERAL HELPERS
+========================= */
+
+function normalizeWalkingId(value) {
   return String(value || "")
     .trim()
     .toUpperCase();
@@ -865,8 +1057,7 @@ function generateWalkingId() {
     result +=
       alphabet[
         Math.floor(
-          Math.random() *
-            alphabet.length
+          Math.random() * alphabet.length
         )
       ];
   }
@@ -878,9 +1069,7 @@ function generateWalkingId() {
 function generateTransferPin() {
   return String(
     Math.floor(
-      100000 +
-        Math.random() *
-          900000
+      100000 + Math.random() * 900000
     )
   );
 }
@@ -895,23 +1084,15 @@ function haversineMeters(
   const R = 6371000;
 
   const dLat =
-    (lat2 - lat1) *
-    Math.PI /
-    180;
+    (lat2 - lat1) * Math.PI / 180;
 
   const dLon =
-    (lon2 - lon1) *
-    Math.PI /
-    180;
+    (lon2 - lon1) * Math.PI / 180;
 
   const a =
     Math.sin(dLat / 2) ** 2 +
-    Math.cos(
-      lat1 * Math.PI / 180
-    ) *
-    Math.cos(
-      lat2 * Math.PI / 180
-    ) *
+    Math.cos(lat1 * Math.PI / 180) *
+    Math.cos(lat2 * Math.PI / 180) *
     Math.sin(dLon / 2) ** 2;
 
   return (
@@ -925,19 +1106,14 @@ function haversineMeters(
 }
 
 
-function json(
-  data,
-  status = 200
-) {
+function json(data, status = 200) {
   return new Response(
     JSON.stringify(data),
     {
       status,
       headers: {
-        "Content-Type":
-          "application/json",
-        "Cache-Control":
-          "no-store"
+        "Content-Type": "application/json",
+        "Cache-Control": "no-store"
       }
     }
   );
