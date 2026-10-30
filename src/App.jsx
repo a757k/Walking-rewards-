@@ -1,10 +1,12 @@
 
 import { useEffect, useState } from "react";
+
 import Dashboard from "./components/Dashboard";
 import Walk from "./components/Walk";
 import Rewards from "./components/Rewards";
 import Account from "./components/Account";
 import AdBanner from "./components/AdBanner";
+import PopUnder from "./components/PopUnder";
 
 import { getAccount } from "./utils/storage";
 
@@ -13,11 +15,13 @@ const SMARTLINK =
 
 function SponsorLink() {
   return (
-    <div style={{
-      textAlign: "center",
-      padding: "12px",
-      margin: "12px auto",
-    }}>
+    <div
+      style={{
+        textAlign: "center",
+        padding: "12px",
+        margin: "12px auto",
+      }}
+    >
       <a
         href={SMARTLINK}
         target="_blank"
@@ -68,6 +72,8 @@ export default function App() {
   if (!account) {
     return (
       <div className="app">
+        <PopUnder />
+
         <main className="main-content">
           <Account
             account={null}
@@ -84,6 +90,8 @@ export default function App() {
 
   return (
     <div className="app">
+      <PopUnder />
+
       <header className="topbar">
         <div>
           <h1>Walking Rewards</h1>
