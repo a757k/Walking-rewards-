@@ -1,7 +1,9 @@
+
 import { useState } from "react";
 import {
   createAccount,
-  transferAccount
+  transferAccount,
+  saveEmails
 } from "../utils/api";
 import {
   saveAccount,
@@ -16,14 +18,26 @@ export default function Account({
   const [mode, setMode] = useState("create");
   const [walkingId, setWalkingId] = useState("");
   const [transferPin, setTransferPin] = useState("");
+  const [email, setEmail] = useState("");
+  const [paypalEmail, setPaypalEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   async function handleCreate() {
+    const normalEmail = email.trim().toLowerCase();
+    const paymentEmail = paypalEmail.trim().toLowerCase();
+
+    if (!normalEmail || !paymentEmail) {
+      setError("Enter both your normal email and PayPal email.");
+      return;
+    }
+
     setLoading(true);
     setError("");
     setMessage("");
+
+    let createdAccount = null;
 
     try {
       const result = await createAccount();
@@ -32,12 +46,31 @@ export default function Account({
         throw new Error("The server did not return an account.");
       }
 
-      saveAccount(result.account);
-      updateAccount(result.account);
+      createdAccount = result.account;
 
-      setMessage("Account created successfully.");
+      await saveEmails(
+        createdAccount.walkingId,
+        createdAccount.transferPin,
+        normalEmail,
+        paymentEmail
+      );
+
+      saveAccount(createdAccount);
+      updateAccount(createdAccount);
+
+      setMessage("Account created and email details saved successfully.");
     } catch (err) {
-      setError(err.message || "Could not create account.");
+      if (createdAccount) {
+        saveAccount(createdAccount);
+        updateAccount(createdAccount);
+
+        setError(
+          "Your account was created, but your email details could not be saved. Keep your Walking ID and PIN safe. Please contact support before creating another account. Error: " +
+          (err.message || "Unknown error.")
+        );
+      } else {
+        setError(err.message || "Could not create account.");
+      }
     } finally {
       setLoading(false);
     }
@@ -123,6 +156,26 @@ export default function Account({
                 Transfer PIN.
               </p>
 
+              <label>Normal email address</label>
+              <input
+                type="email"
+                placeholder="Your email address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
+              />
+
+              <label>PayPal email address</label>
+              <input
+                type="email"
+                placeholder="Your PayPal email address"
+                value={paypalEmail}
+                onChange={(e) => setPaypalEmail(e.target.value)}
+                autoComplete="off"
+                required
+              />
+
               <button
                 className="primary-button"
                 onClick={handleCreate}
@@ -146,7 +199,7 @@ export default function Account({
               />
 
               <input
-                type="text"
+                type="password"
                 inputMode="numeric"
                 placeholder="Transfer PIN"
                 value={transferPin}
@@ -165,15 +218,11 @@ export default function Account({
           )}
 
           {message && (
-            <p className="success-message">
-              {message}
-            </p>
+            <p className="success-message">{message}</p>
           )}
 
           {error && (
-            <p className="error-message">
-              {error}
-            </p>
+            <p className="error-message">{error}</p>
           )}
         </div>
       </div>
