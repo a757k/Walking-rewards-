@@ -5,6 +5,7 @@ import Dashboard from "./components/Dashboard";
 import Walk from "./components/Walk";
 import Rewards from "./components/Rewards";
 import Account from "./components/Account";
+import Admin from "./components/Admin";
 import AdBanner from "./components/AdBanner";
 import PopUnder from "./components/PopUnder";
 
@@ -134,6 +135,10 @@ export default function App() {
             updateAccount={updateAccount}
           />
         )}
+
+        {page === "admin" && (
+          <Admin />
+        )}
       </main>
 
       <SponsorLink />
@@ -166,6 +171,13 @@ export default function App() {
           onClick={() => setPage("account")}
         >
           Account
+        </button>
+
+        <button
+          className={page === "admin" ? "active" : ""}
+          onClick={() => setPage("admin")}
+        >
+          Admin
         </button>
       </nav>
     </div>
