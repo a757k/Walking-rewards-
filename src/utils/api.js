@@ -1,3 +1,4 @@
+
 async function request(endpoint, options = {}) {
   const response = await fetch(
     "/.netlify/functions/" + endpoint,
@@ -27,6 +28,11 @@ async function request(endpoint, options = {}) {
   return data;
 }
 
+
+/* =========================
+   ACCOUNT
+========================= */
+
 export async function createAccount() {
   return request("account", {
     method: "POST",
@@ -35,6 +41,7 @@ export async function createAccount() {
     })
   });
 }
+
 
 export async function transferAccount(
   walkingId,
@@ -50,6 +57,11 @@ export async function transferAccount(
   });
 }
 
+
+/* =========================
+   OUTDOOR WALKING
+========================= */
+
 export async function startWalkSession(
   walkingId
 ) {
@@ -61,6 +73,7 @@ export async function startWalkSession(
     })
   });
 }
+
 
 export async function sendWalkPosition(
   walkingId,
@@ -78,6 +91,45 @@ export async function sendWalkPosition(
   });
 }
 
+
+/* =========================
+   TREADMILL WALKING
+========================= */
+
+export async function startTreadmillSession(
+  walkingId
+) {
+  return request("account", {
+    method: "POST",
+    body: JSON.stringify({
+      action: "startTreadmill",
+      walkingId
+    })
+  });
+}
+
+
+export async function sendTreadmillSteps(
+  walkingId,
+  sessionId,
+  steps
+) {
+  return request("account", {
+    method: "POST",
+    body: JSON.stringify({
+      action: "treadmillSteps",
+      walkingId,
+      sessionId,
+      steps
+    })
+  });
+}
+
+
+/* =========================
+   FINISH WALKING
+========================= */
+
 export async function finishWalkSession(
   walkingId,
   sessionId
@@ -91,6 +143,11 @@ export async function finishWalkSession(
     })
   });
 }
+
+
+/* =========================
+   REWARDS
+========================= */
 
 export async function enterReward(
   walkingId,
