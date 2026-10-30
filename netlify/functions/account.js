@@ -1,3 +1,4 @@
+
 import { getStore } from "@netlify/blobs";
 import crypto from "node:crypto";
 
@@ -45,18 +46,10 @@ export default async function handler(req) {
     const body = await req.json();
 
     switch (body.action) {
-      /*
-       * Support BOTH versions:
-       * "create" and "createAccount"
-       */
       case "create":
       case "createAccount":
         return await createAccount(accounts);
 
-      /*
-       * Support BOTH versions:
-       * "transfer" and "transferAccount"
-       */
       case "transfer":
       case "transferAccount":
         return await transferAccount(body, accounts);
@@ -670,15 +663,12 @@ async function finishWalk(
       session.distanceKm || 0
     );
 
+  // NEW RATE: 1 point for every completed kilometre.
   const oldMilestones =
-    Math.floor(
-      oldDistance / 5
-    );
+    Math.floor(oldDistance / 1);
 
   const newMilestones =
-    Math.floor(
-      newDistance / 5
-    );
+    Math.floor(newDistance / 1);
 
   const earnedPoints =
     Math.max(
