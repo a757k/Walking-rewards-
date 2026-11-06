@@ -1,3 +1,4 @@
+
 import { getStore } from "@netlify/blobs";
 import crypto from "node:crypto";
 
@@ -235,7 +236,6 @@ async function claimDailyLogin(body, accounts) {
   const lastClaimDate = String(account.dailyLoginLastClaimDate || "");
   const lastStreakDay = Number(account.dailyLoginStreakDay || 0);
 
-  // Prevent a second reward on the same local calendar day.
   if (lastClaimDate === today) {
     return json({
       success: true,
@@ -258,11 +258,9 @@ async function claimDailyLogin(body, accounts) {
 
   let streakDay;
 
-  // Consecutive local calendar day: advance the streak.
   if (dayDifference === 1 && lastStreakDay >= 1 && lastStreakDay <= 5) {
     streakDay = lastStreakDay === 5 ? 1 : lastStreakDay + 1;
   } else {
-    // First claim or missed day: restart at Day 1.
     streakDay = 1;
   }
 
@@ -665,8 +663,11 @@ async function finishWalk(body, accounts, walks) {
     return json({ error: "Walk already finished." }, 400);
   }
 
+  const now = new Date();
+  const nowIso = now.toISOString();
+
   session.finished = true;
-  session.finishedAt = new Date().toISOString();
+  session.finishedAt = nowIso;
 
   const oldDistance = Number(account.totalDistance || 0);
   const sessionDistance = Number(session.distanceKm || 0);
@@ -677,13 +678,54 @@ async function finishWalk(body, accounts, walks) {
 
   const earnedPoints = Math.max(0, newMilestones - oldMilestones);
 
+  // Preserve the existing accumulated-distance point calculation.
   account.totalDistance = newDistance;
   account.lifetimeDistance =
     Number(account.lifetimeDistance || 0) + sessionDistance;
   account.completedWalks =
     Number(account.completedWalks || 0) + 1;
   account.points = Number(account.points || 0) + earnedPoints;
-  account.updatedAt = new Date().toISOString();
+
+  // Calculate today's date using the timezone saved by daily login.
+  // Use UTC if the account does not have a valid saved timezone.
+  let statsTimeZone = account.dailyLoginTimeZone || "UTC";
+  let formatter;
+
+  try {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: statsTimeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    });
+  } catch {
+    statsTimeZone = "UTC";
+
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    });
+  }
+
+  const today = getDateInTimeZone(formatter, now);
+
+  // Reset today's statistics when a new local calendar day begins.
+  if (account.dailyStatsDate !== today) {
+    account.dailyStatsDate = today;
+    account.dailyDistanceKm = 0;
+    account.dailyWalkingPoints = 0;
+  }
+
+  // Add this completed walk to today's statistics.
+  account.dailyDistanceKm =
+    Number(account.dailyDistanceKm || 0) + sessionDistance;
+
+  account.dailyWalkingPoints =
+    Number(account.dailyWalkingPoints || 0) + earnedPoints;
+
+  account.updatedAt = nowIso;
 
   await accounts.setJSON(`account/${walkingId}`, account);
   await saveSession(walks, session);
