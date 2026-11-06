@@ -1,4 +1,3 @@
-
 import { getStore } from "@netlify/blobs";
 import crypto from "node:crypto";
 
@@ -49,6 +48,9 @@ export default async function handler(req) {
       case "transfer":
       case "transferAccount":
         return await transferAccount(body, accounts);
+
+      case "claimDailyLogin":
+        return await claimDailyLogin(body, accounts);
 
       case "startWalk":
         return await startWalk(body, accounts, walks, "outdoor");
@@ -185,6 +187,171 @@ async function transferAccount(body, accounts) {
 }
 
 
+/* DAILY LOGIN REWARDS */
+
+async function claimDailyLogin(body, accounts) {
+  const walkingId = normalizeWalkingId(body.walkingId);
+  const transferPin = String(body.transferPin || "").trim();
+  const timeZone = String(body.timeZone || "").trim();
+
+  if (!walkingId || !transferPin) {
+    return json({
+      error: "Walking ID and transfer PIN are required."
+    }, 400);
+  }
+
+  if (!timeZone || timeZone.length > 100) {
+    return json({
+      error: "A valid device time zone is required."
+    }, 400);
+  }
+
+  let formatter;
+
+  try {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    });
+  } catch {
+    return json({
+      error: "The device time zone is invalid."
+    }, 400);
+  }
+
+  const account = await getAccount(accounts, walkingId);
+
+  if (!account) {
+    return json({ error: "Walking account not found." }, 404);
+  }
+
+  if (account.transferPin !== transferPin) {
+    return json({ error: "Invalid transfer PIN." }, 401);
+  }
+
+  const today = getDateInTimeZone(formatter, new Date());
+  const lastClaimDate = String(account.dailyLoginLastClaimDate || "");
+  const lastStreakDay = Number(account.dailyLoginStreakDay || 0);
+
+  // Prevent a second reward on the same local calendar day.
+  if (lastClaimDate === today) {
+    return json({
+      success: true,
+      alreadyClaimed: true,
+      rewardPoints: 0,
+      streakDay:
+        lastStreakDay >= 1 && lastStreakDay <= 5
+          ? lastStreakDay
+          : 1,
+      nextRewardPoints: nextDailyReward(lastStreakDay),
+      lastClaimDate,
+      timeZone,
+      account
+    });
+  }
+
+  const dayDifference = lastClaimDate
+    ? calendarDayDifference(lastClaimDate, today)
+    : null;
+
+  let streakDay;
+
+  // Consecutive local calendar day: advance the streak.
+  if (dayDifference === 1 && lastStreakDay >= 1 && lastStreakDay <= 5) {
+    streakDay = lastStreakDay === 5 ? 1 : lastStreakDay + 1;
+  } else {
+    // First claim or missed day: restart at Day 1.
+    streakDay = 1;
+  }
+
+  const rewardPoints = streakDay * 2;
+
+  account.points = Number(account.points || 0) + rewardPoints;
+  account.dailyLoginLastClaimDate = today;
+  account.dailyLoginStreakDay = streakDay;
+  account.dailyLoginTimeZone = timeZone;
+  account.updatedAt = new Date().toISOString();
+
+  await accounts.setJSON(`account/${walkingId}`, account);
+
+  return json({
+    success: true,
+    alreadyClaimed: false,
+    rewardPoints,
+    streakDay,
+    nextRewardPoints: nextDailyReward(streakDay),
+    lastClaimDate: today,
+    timeZone,
+    account
+  });
+}
+
+
+function getDateInTimeZone(formatter, date) {
+  const parts = formatter.formatToParts(date);
+  const values = {};
+
+  for (const part of parts) {
+    if (part.type !== "literal") {
+      values[part.type] = part.value;
+    }
+  }
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+
+function calendarDayDifference(previousDate, currentDate) {
+  const previous = parseCalendarDate(previousDate);
+  const current = parseCalendarDate(currentDate);
+
+  if (!previous || !current) {
+    return null;
+  }
+
+  return Math.round((current - previous) / 86400000);
+}
+
+
+function parseCalendarDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+
+  const timestamp = Date.UTC(year, month - 1, day);
+  const check = new Date(timestamp);
+
+  if (
+    check.getUTCFullYear() !== year ||
+    check.getUTCMonth() !== month - 1 ||
+    check.getUTCDate() !== day
+  ) {
+    return null;
+  }
+
+  return timestamp;
+}
+
+
+function nextDailyReward(currentStreakDay) {
+  const day = Number(currentStreakDay);
+
+  if (!Number.isInteger(day) || day < 1 || day > 5) {
+    return 2;
+  }
+
+  return day === 5 ? 2 : (day + 1) * 2;
+}
+
+
 /* WALK SESSION */
 
 async function startWalk(body, accounts, walks, mode) {
@@ -248,7 +415,9 @@ async function addPosition(body, accounts, walks) {
   }
 
   if (session.mode === "treadmill") {
-    return json({ error: "GPS is not allowed in a treadmill session." }, 400);
+    return json({
+      error: "GPS is not allowed in a treadmill session."
+    }, 400);
   }
 
   const latitude = Number(position.latitude);
@@ -388,7 +557,9 @@ async function addTreadmillSteps(body, accounts, walks) {
   }
 
   if (session.finished) {
-    return json({ error: "This walk has already finished." }, 400);
+    return json({
+      error: "This walk has already finished."
+    }, 400);
   }
 
   if (session.mode !== "treadmill") {
@@ -917,7 +1088,9 @@ async function adminMarkAwardSent(body, rewards) {
   }
 
   if (winner.status !== "approved") {
-    return json({ error: "Approve this award before marking it sent." }, 400);
+    return json({
+      error: "Approve this award before marking it sent."
+    }, 400);
   }
 
   winner.status = "sent";
@@ -942,7 +1115,10 @@ async function getAllRewards(rewards) {
 
   for (const blob of result.blobs || []) {
     const reward = await rewards.get(blob.key, { type: "json" });
-    if (reward) items.push(reward);
+
+    if (reward) {
+      items.push(reward);
+    }
   }
 
   return items;
@@ -950,14 +1126,18 @@ async function getAllRewards(rewards) {
 
 
 async function getAccount(accounts, walkingId) {
-  if (!walkingId) return null;
+  if (!walkingId) {
+    return null;
+  }
 
   return await accounts.get(`account/${walkingId}`, { type: "json" });
 }
 
 
 async function getSession(walks, sessionId) {
-  if (!sessionId) return null;
+  if (!sessionId) {
+    return null;
+  }
 
   return await walks.get(`session/${sessionId}`, { type: "json" });
 }
