@@ -1,10 +1,18 @@
-export default function Dashboard({ account, setPage }) {
-  const points = account?.points || 0;
-  const totalDistance = Number(account?.totalDistance || 0);
-  const completedWalks = account?.completedWalks || 0;
 
-  const progress = totalDistance % 5;
-  const progressPercent = (progress / 5) * 100;
+export default function Dashboard({ account, setPage }) {
+  const points = Number(account?.points || 0);
+
+  const todayDistance = Number(
+    account?.dailyDistanceKm || 0
+  );
+
+  const todayWalkingPoints = Number(
+    account?.dailyWalkingPoints || 0
+  );
+
+  const lifetimeDistance = Number(
+    account?.lifetimeDistance ?? account?.totalDistance ?? 0
+  );
 
   return (
     <div className="dashboard">
@@ -15,42 +23,34 @@ export default function Dashboard({ account, setPage }) {
           Walk verified kilometres, earn points, and use your
           points for available rewards.
         </p>
+
+        <p>
+          <strong>How points work:</strong> Earn 1 point for every
+          1 km walked. Distance accumulates across multiple walks,
+          so even short walks count. Any remaining distance carries over.
+        </p>
       </section>
 
       <section className="stats-grid">
         <div className="card">
-          <span>Points</span>
+          <span>Distance Today</span>
+          <strong>{todayDistance.toFixed(2)} km</strong>
+        </div>
+
+        <div className="card">
+          <span>Walking Points Today</span>
+          <strong>{todayWalkingPoints}</strong>
+        </div>
+
+        <div className="card">
+          <span>Lifetime Distance</span>
+          <strong>{lifetimeDistance.toFixed(2)} km</strong>
+        </div>
+
+        <div className="card">
+          <span>Points Balance</span>
           <strong>{points}</strong>
         </div>
-
-        <div className="card">
-          <span>Total Distance</span>
-          <strong>{totalDistance.toFixed(2)} km</strong>
-        </div>
-
-        <div className="card">
-          <span>Completed Walks</span>
-          <strong>{completedWalks}</strong>
-        </div>
-      </section>
-
-      <section className="card">
-        <h3>Next Point</h3>
-
-        <p>
-          {progress.toFixed(2)} km of 5 km completed
-        </p>
-
-        <div className="progress-container">
-          <div
-            className="progress-bar"
-            style={{ width: `${progressPercent}%` }}
-          />
-        </div>
-
-        <p>
-          {(5 - progress).toFixed(2)} km remaining
-        </p>
       </section>
 
       <section className="dashboard-actions">
