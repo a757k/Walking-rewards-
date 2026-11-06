@@ -14,6 +14,45 @@ import { getAccount, saveAccount } from "./utils/storage";
 const SMARTLINK =
   "https://araplhn.org/4/18626d8b0e3ef5c5fe42dacc09b3cef8";
 
+function getDateInTimeZone(timeZone) {
+  try {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  } catch {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "UTC",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+  }
+}
+
+function getSavedDailyReward(saved) {
+  if (!saved?.dailyLoginLastClaimDate) return null;
+
+  const timeZone =
+    saved.dailyLoginTimeZone ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone ||
+    "UTC";
+
+  const today = getDateInTimeZone(timeZone);
+
+  if (saved.dailyLoginLastClaimDate !== today) {
+    return null;
+  }
+
+  return {
+    streakDay: saved.dailyLoginStreakDay || 1,
+    pointsAwarded: 0,
+    alreadyClaimed: true,
+  };
+}
+
 function SponsorLink() {
   return (
     <div style={{ textAlign: "center", padding: "12px", margin: "12px auto" }}>
@@ -101,7 +140,7 @@ function DailyRewardBanner({
             fontWeight: "600",
           }}
         >
-          Today's reward collected!
+          ✓ Today's reward collected!
         </div>
       ) : (
         <button
@@ -155,6 +194,7 @@ export default function App() {
 
     if (saved && saved.walkingId) {
       setAccount(saved);
+      setDailyReward(getSavedDailyReward(saved));
       setPage("home");
     } else {
       setAccount(null);
@@ -170,7 +210,6 @@ export default function App() {
     setClaiming(true);
     setDailyRewardError("");
 
-    // Open the sponsor link on approximately 30% of reward presses.
     if (Math.random() < 0.3) {
       window.open(SMARTLINK, "_blank", "noopener,noreferrer");
     }
