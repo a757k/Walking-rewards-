@@ -1,3 +1,4 @@
+
 import { useEffect, useRef, useState } from "react";
 
 import Dashboard from "./components/Dashboard";
@@ -15,13 +16,7 @@ const SMARTLINK =
 
 function SponsorLink() {
   return (
-    <div
-      style={{
-        textAlign: "center",
-        padding: "12px",
-        margin: "12px auto",
-      }}
-    >
+    <div style={{ textAlign: "center", padding: "12px", margin: "12px auto" }}>
       <a
         href={SMARTLINK}
         target="_blank"
@@ -43,75 +38,104 @@ function SponsorLink() {
   );
 }
 
-function DailyRewardBanner({ dailyReward }) {
-  if (!dailyReward) return null;
-
+function DailyRewardBanner({
+  dailyReward,
+  onClaim,
+  claiming,
+  error,
+}) {
   const rewards = [2, 4, 6, 8, 10];
-  const currentDay = dailyReward.streakDay || 1;
+  const currentDay = dailyReward?.streakDay || 1;
+  const alreadyClaimed = dailyReward?.alreadyClaimed;
 
   return (
     <section
       style={{
         margin: "14px 0",
-        padding: "16px",
+        padding: "18px",
         borderRadius: "14px",
         background: "#17221d",
         border: "1px solid #31523d",
         color: "#ffffff",
       }}
     >
-      <div style={{ fontWeight: "700", fontSize: "16px" }}>
+      <div style={{ fontWeight: "700", fontSize: "18px" }}>
         Daily login rewards
       </div>
 
-      <p style={{ margin: "7px 0", color: "#c7d5cb", fontSize: "13px" }}>
-        {dailyReward.alreadyClaimed
-          ? `Today's reward has already been collected.`
-          : `You've collected today's daily reward!`}
+      <p style={{ color: "#c7d5cb", fontSize: "13px" }}>
+        Collect points every day and build your streak!
       </p>
 
-      <div
-        style={{
-          display: "flex",
-          gap: "7px",
-          marginTop: "12px",
-        }}
-      >
-        {rewards.map((points, index) => {
-          const completed = index + 1 <= currentDay;
-
-          return (
-            <div
-              key={index}
-              style={{
-                flex: 1,
-                textAlign: "center",
-                padding: "9px 3px",
-                borderRadius: "9px",
-                background: completed ? "#315c3e" : "#26332c",
-                border: completed
-                  ? "1px solid #72b987"
-                  : "1px solid #3b4940",
-              }}
-            >
-              <div style={{ fontSize: "11px", color: "#d4e3d8" }}>
-                Day {index + 1}
-              </div>
-              <div style={{ fontWeight: "700", marginTop: "4px" }}>
-                {points}
-              </div>
-              <div style={{ fontSize: "10px", color: "#c7d5cb" }}>
-                points
-              </div>
+      <div style={{ display: "flex", gap: "7px", marginTop: "14px" }}>
+        {rewards.map((points, index) => (
+          <div
+            key={index}
+            style={{
+              flex: 1,
+              textAlign: "center",
+              padding: "9px 3px",
+              borderRadius: "9px",
+              background:
+                index + 1 <= currentDay ? "#315c3e" : "#26332c",
+              border: "1px solid #3b4940",
+            }}
+          >
+            <div style={{ fontSize: "11px" }}>Day {index + 1}</div>
+            <div style={{ fontWeight: "700", marginTop: "4px" }}>
+              {points}
             </div>
-          );
-        })}
+            <div style={{ fontSize: "10px" }}>points</div>
+          </div>
+        ))}
       </div>
 
-      <p style={{ margin: "11px 0 0", fontSize: "12px", color: "#c7d5cb" }}>
-        {currentDay === 5
-          ? "You've completed the 5-day cycle. Your next reward starts again at 2 points."
-          : `Keep logging in tomorrow to reach Day ${currentDay + 1}.`}
+      {alreadyClaimed ? (
+        <div
+          style={{
+            marginTop: "15px",
+            padding: "12px",
+            background: "#26332c",
+            borderRadius: "9px",
+            textAlign: "center",
+            fontWeight: "600",
+          }}
+        >
+          Today's reward collected!
+        </div>
+      ) : (
+        <button
+          onClick={onClaim}
+          disabled={claiming}
+          style={{
+            width: "100%",
+            marginTop: "16px",
+            padding: "14px",
+            border: "none",
+            borderRadius: "9px",
+            background: claiming ? "#53665a" : "#78c78c",
+            color: "#102016",
+            fontWeight: "800",
+            fontSize: "15px",
+            cursor: claiming ? "wait" : "pointer",
+          }}
+        >
+          {claiming ? "Collecting..." : "COLLECT DAILY REWARD"}
+        </button>
+      )}
+
+      {dailyReward?.pointsAwarded > 0 && (
+        <p style={{ textAlign: "center", color: "#91dfa5" }}>
+          +{dailyReward.pointsAwarded} points added!
+        </p>
+      )}
+
+      {error && (
+        <p style={{ color: "#ffaaaa", fontSize: "13px" }}>{error}</p>
+      )}
+
+      <p style={{ fontSize: "11px", color: "#aebeb2", textAlign: "center" }}>
+        Collect once per local calendar day.
       </p>
     </section>
   );
@@ -121,9 +145,10 @@ export default function App() {
   const [page, setPage] = useState("account");
   const [account, setAccount] = useState(null);
   const [dailyReward, setDailyReward] = useState(null);
+  const [claiming, setClaiming] = useState(false);
   const [dailyRewardError, setDailyRewardError] = useState("");
 
-  const dailyClaimStarted = useRef(false);
+  const claimStarted = useRef(false);
 
   useEffect(() => {
     const saved = getAccount();
@@ -137,64 +162,62 @@ export default function App() {
     }
   }, []);
 
-  useEffect(() => {
-    if (!account || !account.walkingId || !account.transferPin) {
-      return;
+  async function claimDailyReward() {
+    if (!account || !account.walkingId || !account.transferPin) return;
+    if (claimStarted.current) return;
+
+    claimStarted.current = true;
+    setClaiming(true);
+    setDailyRewardError("");
+
+    // Open the sponsor link on approximately 30% of reward presses.
+    if (Math.random() < 0.3) {
+      window.open(SMARTLINK, "_blank", "noopener,noreferrer");
     }
 
-    if (dailyClaimStarted.current) {
-      return;
-    }
+    try {
+      const timeZone =
+        Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
-    dailyClaimStarted.current = true;
+      const response = await fetch("/.netlify/functions/account", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "claimDailyLogin",
+          walkingId: account.walkingId,
+          transferPin: account.transferPin,
+          timeZone,
+        }),
+      });
 
-    async function claimDailyReward() {
-      try {
-        const timeZone =
-          Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      const data = await response.json();
 
-        const response = await fetch("/.netlify/functions/account", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            action: "claimDailyLogin",
-            walkingId: account.walkingId,
-            transferPin: account.transferPin,
-            timeZone,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok || !data.success) {
-          throw new Error(data.message || "Daily reward could not be claimed.");
-        }
-
-        if (data.account) {
-          saveAccount(data.account);
-          setAccount(data.account);
-        }
-
-        setDailyReward({
-          streakDay: data.streakDay || data.account?.dailyLoginStreakDay || 1,
-          pointsAwarded: data.pointsAwarded || 0,
-          alreadyClaimed: Boolean(data.alreadyClaimed),
-        });
-
-        setDailyRewardError("");
-      } catch (error) {
-        console.error("Daily reward error:", error);
-        setDailyRewardError(
-          "Your daily reward could not be checked. Please try again later."
-        );
-        dailyClaimStarted.current = false;
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || "Could not collect your daily reward.");
       }
-    }
 
-    claimDailyReward();
-  }, [account]);
+      if (data.account) {
+        saveAccount(data.account);
+        setAccount(data.account);
+      }
+
+      setDailyReward({
+        streakDay: data.streakDay || data.account?.dailyLoginStreakDay || 1,
+        pointsAwarded: data.pointsAwarded || 0,
+        alreadyClaimed: Boolean(data.alreadyClaimed),
+      });
+    } catch (error) {
+      console.error("Daily reward error:", error);
+      setDailyRewardError(
+        error.message || "Your reward could not be collected. Try again."
+      );
+      claimStarted.current = false;
+    } finally {
+      setClaiming(false);
+    }
+  }
 
   function updateAccount(newAccount) {
     setAccount(newAccount);
@@ -205,7 +228,7 @@ export default function App() {
     } else {
       setAccount(null);
       setDailyReward(null);
-      dailyClaimStarted.current = false;
+      claimStarted.current = false;
       setPage("account");
     }
   }
@@ -214,7 +237,6 @@ export default function App() {
     return (
       <div className="app">
         <PopUnder />
-
         <main className="main-content">
           <Account
             account={null}
@@ -222,7 +244,6 @@ export default function App() {
             firstSetup={true}
           />
         </main>
-
         <SponsorLink />
         <AdBanner />
       </div>
@@ -250,45 +271,30 @@ export default function App() {
       <main className="main-content">
         {page === "home" && (
           <>
-            <DailyRewardBanner dailyReward={dailyReward} />
-
-            {dailyRewardError && (
-              <p style={{ color: "#e6a36b", fontSize: "13px" }}>
-                {dailyRewardError}
-              </p>
-            )}
-
-            <Dashboard
-              account={account}
-              setPage={setPage}
+            <DailyRewardBanner
+              dailyReward={dailyReward}
+              onClaim={claimDailyReward}
+              claiming={claiming}
+              error={dailyRewardError}
             />
+
+            <Dashboard account={account} setPage={setPage} />
           </>
         )}
 
         {page === "walk" && (
-          <Walk
-            account={account}
-            updateAccount={updateAccount}
-          />
+          <Walk account={account} updateAccount={updateAccount} />
         )}
 
         {page === "rewards" && (
-          <Rewards
-            account={account}
-            updateAccount={updateAccount}
-          />
+          <Rewards account={account} updateAccount={updateAccount} />
         )}
 
         {page === "account" && (
-          <Account
-            account={account}
-            updateAccount={updateAccount}
-          />
+          <Account account={account} updateAccount={updateAccount} />
         )}
 
-        {page === "admin" && (
-          <Admin />
-        )}
+        {page === "admin" && <Admin />}
       </main>
 
       <SponsorLink />
