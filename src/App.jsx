@@ -14,6 +14,28 @@ import { getAccount, saveAccount } from "./utils/storage";
 const SMARTLINK =
   "https://araplhn.org/4/18626d8b0e3ef5c5fe42dacc09b3cef8";
 
+const NEW_SMARTLINK =
+  "https://asiafilm.org/4/4d2afec0769410fc201b350daa94a24e";
+
+const TAB_SMARTLINK_CHANCE = 0.25;
+
+function getQatarDate() {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Qatar",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const values = {};
+
+  for (const part of parts) {
+    values[part.type] = part.value;
+  }
+
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 function getDateInTimeZone(timeZone) {
   try {
     return new Intl.DateTimeFormat("en-CA", {
@@ -53,26 +75,37 @@ function getSavedDailyReward(saved) {
   };
 }
 
+function openSmartlink(url) {
+  const opened = window.open(url, "_blank", "noopener,noreferrer");
+
+  if (opened) {
+    return true;
+  }
+
+  return false;
+}
+
 function SponsorLink() {
   return (
     <div style={{ textAlign: "center", padding: "12px", margin: "12px auto" }}>
-      <a
-        href={SMARTLINK}
-        target="_blank"
-        rel="noopener noreferrer"
+      <button
+        type="button"
+        onClick={() => openSmartlink(NEW_SMARTLINK)}
         style={{
           display: "inline-block",
           padding: "11px 20px",
+          border: "none",
           borderRadius: "8px",
           background: "#2563eb",
           color: "#ffffff",
           textDecoration: "none",
           fontWeight: "600",
           fontSize: "14px",
+          cursor: "pointer",
         }}
       >
         Visit today's sponsor (optional)
-      </a>
+      </button>
     </div>
   );
 }
@@ -202,6 +235,30 @@ export default function App() {
     }
   }, []);
 
+  function handlePageChange(nextPage) {
+    if (nextPage === page) return;
+
+    const today = getQatarDate();
+    const tabKey = `walkingRewardsNewSmartlinkTab_${today}`;
+
+    try {
+      const alreadyOpened = localStorage.getItem(tabKey) === "opened";
+
+      if (
+        !alreadyOpened &&
+        Math.random() < TAB_SMARTLINK_CHANCE
+      ) {
+        // Mark before opening to prevent repeated attempts.
+        localStorage.setItem(tabKey, "opened");
+        openSmartlink(NEW_SMARTLINK);
+      }
+    } catch (error) {
+      console.error("Tab SmartLink tracking failed:", error);
+    }
+
+    setPage(nextPage);
+  }
+
   async function claimDailyReward() {
     if (!account || !account.walkingId || !account.transferPin) return;
     if (claimStarted.current) return;
@@ -210,8 +267,14 @@ export default function App() {
     setClaiming(true);
     setDailyRewardError("");
 
-    if (Math.random() < 0.3) {
-      window.open(SMARTLINK, "_blank", "noopener,noreferrer");
+    // Choose at most one SmartLink for this claim:
+    // 60% new SmartLink, 30% existing SmartLink, 10% none.
+    const random = Math.random();
+
+    if (random < 0.6) {
+      openSmartlink(NEW_SMARTLINK);
+    } else if (random < 0.9) {
+      openSmartlink(SMARTLINK);
     }
 
     try {
@@ -263,7 +326,7 @@ export default function App() {
 
     if (newAccount && newAccount.walkingId) {
       saveAccount(newAccount);
-      setPage("home");
+      handlePageChange("home");
     } else {
       setAccount(null);
       setDailyReward(null);
@@ -301,7 +364,7 @@ export default function App() {
 
         <button
           className="account-button"
-          onClick={() => setPage("account")}
+          onClick={() => handlePageChange("account")}
         >
           Account
         </button>
@@ -317,7 +380,7 @@ export default function App() {
               error={dailyRewardError}
             />
 
-            <Dashboard account={account} setPage={setPage} />
+            <Dashboard account={account} setPage={handlePageChange} />
           </>
         )}
 
@@ -342,35 +405,35 @@ export default function App() {
       <nav className="bottom-nav">
         <button
           className={page === "home" ? "active" : ""}
-          onClick={() => setPage("home")}
+          onClick={() => handlePageChange("home")}
         >
           Home
         </button>
 
         <button
           className={page === "walk" ? "active" : ""}
-          onClick={() => setPage("walk")}
+          onClick={() => handlePageChange("walk")}
         >
           Walk
         </button>
 
         <button
           className={page === "rewards" ? "active" : ""}
-          onClick={() => setPage("rewards")}
+          onClick={() => handlePageChange("rewards")}
         >
           Rewards
         </button>
 
         <button
           className={page === "account" ? "active" : ""}
-          onClick={() => setPage("account")}
+          onClick={() => handlePageChange("account")}
         >
           Account
         </button>
 
         <button
           className={page === "admin" ? "active" : ""}
-          onClick={() => setPage("admin")}
+          onClick={() => handlePageChange("admin")}
         >
           Admin
         </button>
